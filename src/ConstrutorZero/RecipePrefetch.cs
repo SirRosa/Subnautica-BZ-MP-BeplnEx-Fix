@@ -68,25 +68,24 @@ namespace Sirro.BZ.MP.ConstrutorZero
                     m.GetParameters()[0].ParameterType == recipeType.GetType());
                 if (count == null) return false;
 
+                // TechData can contain repeated TechType entries. Aggregate
+                // first: subtracting the owned amount once for *each* entry
+                // underfetches ingredients and can unlock invalid crafting.
+                var requiredByType = CollectRequirements(data);
+                if (requiredByType == null) return false;
                 var planned = new List<object>();
-                foreach (var ingredient in data)
+                foreach (var pair in requiredByType)
                 {
-                    if (ingredient == null) continue;
-                    object techType = CraftFromContainersBridge.Read(ingredient, "techType");
-                    object requiredValue = CraftFromContainersBridge.Read(ingredient, "amount");
-                    if (techType == null || requiredValue == null) continue;
-                    int required = Math.Max(0, Convert.ToInt32(requiredValue,
-                        CultureInfo.InvariantCulture));
                     int owned = Math.Max(0, Convert.ToInt32(count.Invoke(instance,
-                        new[] { techType }), CultureInfo.InvariantCulture));
-                    int missing = Math.Max(0, required - owned);
+                        new[] { pair.Key }), CultureInfo.InvariantCulture));
+                    int missing = Math.Max(0, pair.Value - owned);
                     if (missing > MaxIngredientTransfers ||
                         planned.Count + missing > MaxIngredientTransfers)
                     {
                         report?.Invoke("Recipe exceeds safe ingredient transfer limit");
                         return false;
                     }
-                    for (int n = 0; n < missing; n++) planned.Add(techType);
+                    for (int n = 0; n < missing; n++) planned.Add(pair.Key);
                 }
                 if (planned.Count == 0)
                 {
@@ -147,20 +146,37 @@ namespace Sirro.BZ.MP.ConstrutorZero
                     m.Name == "GetPickupCount" && m.GetParameters().Length == 1 &&
                     m.GetParameters()[0].ParameterType == recipeType.GetType());
                 if (count == null) return false;
-                foreach (var ingredient in ingredients)
+                var requirements = CollectRequirements(ingredients);
+                if (requirements == null) return false;
+                foreach (var pair in requirements)
                 {
-                    var type = CraftFromContainersBridge.Read(ingredient, "techType");
-                    var amount = CraftFromContainersBridge.Read(ingredient, "amount");
-                    if (type == null || amount == null) return false;
-                    int required = Math.Max(0, Convert.ToInt32(amount,
-                        CultureInfo.InvariantCulture));
-                    int available = Convert.ToInt32(count.Invoke(inv, new[] { type }),
-                        CultureInfo.InvariantCulture);
-                    if (available < required) return false;
+                    int available = Convert.ToInt32(count.Invoke(inv,
+                        new[] { pair.Key }), CultureInfo.InvariantCulture);
+                    if (available < pair.Value) return false;
                 }
                 return true;
             }
             catch { return false; }
+        }
+
+        private static Dictionary<object, int> CollectRequirements(IEnumerable ingredients)
+        {
+            var requirements = new Dictionary<object, int>();
+            foreach (var ingredient in ingredients)
+            {
+                if (ingredient == null) return null;
+                var type = CraftFromContainersBridge.Read(ingredient, "techType");
+                var value = CraftFromContainersBridge.Read(ingredient, "amount");
+                if (type == null || value == null) return null;
+                var required = Convert.ToInt32(value, CultureInfo.InvariantCulture);
+                if (required < 0) return null;
+                if (!requirements.TryGetValue(type, out var existing)) existing = 0;
+                // Fail closed on overflow or impossible/hostile recipe data.
+                if (required > MaxIngredientTransfers ||
+                    existing > MaxIngredientTransfers - required) return null;
+                requirements[type] = existing + required;
+            }
+            return requirements;
         }
 
         internal static bool BeginCurrentContext(Action<string> report)
