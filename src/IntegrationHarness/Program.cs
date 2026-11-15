@@ -398,6 +398,19 @@ public static class Program
         Builder.placeRotation = Quaternion.Euler(new Vector3(0, 90, 0));
         Builder.CanPlace = true;
         Builder.PlacementCalls = 0;
+        var preflightType = plugin.GetType().Assembly.GetType(
+            "Sirro.BZ.MP.ConstrutorZero.AutoBuildCoordinator", true);
+        var preflightPrefix = preflightType.GetMethod("Prefix",
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+        autoLocker.container.Remove(buildSecond);
+        Time.frameCount++;
+        int noStockPackets = Subnautica.Events.Handlers.Storage.NetworkRequests;
+        Assert((bool)preflightPrefix.Invoke(null, new object[] { false }) &&
+            !(bool)active.GetValue(null) &&
+            Subnautica.Events.Handlers.Storage.NetworkRequests == noStockPackets,
+            "Auto-build does not start a partial transfer when the locker lacks full recipe");
+        autoLocker.container.Add(buildSecond);
+        Time.frameCount++;
         Assert(!Builder.TryPlace(), "Initial building action deferred before any resource consumption");
         Assert(Builder.PlacementCalls == 0,
             "Vanilla Builder.TryPlace never runs before all server receipts");
@@ -455,6 +468,14 @@ public static class Program
             Builder.PlacementCalls == 0, "Auto build cannot emit duplicate multiplayer packets");
 
         Inventory.main.ActualItems.Clear();
+        autoLocker.container.Clear();
+        autoLocker.container.Add(new InventoryItem { item = new Pickupable {
+            techType = TechType.Titanium,
+            gameObject = new GameObject { name = "item-retry-a" } } });
+        autoLocker.container.Add(new InventoryItem { item = new Pickupable {
+            techType = TechType.Titanium,
+            gameObject = new GameObject { name = "item-retry-b" } } });
+        Time.frameCount++;
         Builder.placePosition = new Vector3(5, 6, 7);
         Builder.placeRotation = Quaternion.Euler(new Vector3(0, 90, 0));
         Assert(!Builder.TryPlace(), "Second construction attempt staged");
@@ -798,6 +819,14 @@ public static class Program
         autoField.SetValue(null, false);
 
         autoBuildField.SetValue(null, true);
+        autoLocker.container.Clear();
+        autoLocker.container.Add(new InventoryItem { item = new Pickupable {
+            techType = TechType.Titanium,
+            gameObject = new GameObject { name = "item-disconnect-a" } } });
+        autoLocker.container.Add(new InventoryItem { item = new Pickupable {
+            techType = TechType.Titanium,
+            gameObject = new GameObject { name = "item-disconnect-b" } } });
+        Time.frameCount++;
         Builder.constructableTechType = TechType.TestRecipe;
         Builder.CanPlace = true;
         Builder.ghostModel = new GameObject();
