@@ -438,9 +438,10 @@ public static class Program
             "No fake network packet when storage handler is unavailable");
         Subnautica.Events.Handlers.Storage.HasStorageHandler = true;
 
-        // Missing building materials use the SAME authoritative transfer queue,
-        // but never call Builder.TryPlace until the exact selected ghost pose is
-        // unchanged and all materials exist in the actual local inventory.
+        // Blueprint placement is NOT construction. BOT Benson must
+        // immediately receive the usual Builder.TryPlace packet whether
+        // the player has 0, 1, or all ingredients available. CFC is only a
+        // separate server-authoritative prefetch and cannot replay clicks.
         Inventory.main.ActualItems.Clear();
         autoLocker.container.Clear();
         var buildFirst = new InventoryItem { item = new Pickupable {
@@ -448,126 +449,89 @@ public static class Program
         var buildSecond = new InventoryItem { item = new Pickupable {
             techType = TechType.Titanium, gameObject = new GameObject { name = "item-h" } } };
         autoLocker.container.Add(buildFirst);
-        autoLocker.container.Add(buildSecond);
         var autoBuildField = confType.GetField("AutoBuildEnabled",
             BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
         var autoPlaceField = confType.GetField("AutoPlaceAfterPrefetch",
             BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
         autoBuildField.SetValue(null, true);
-        autoPlaceField.SetValue(null, true);
+        autoPlaceField.SetValue(null, true); // must NOT replay a blueprint
         Builder.constructableTechType = TechType.TestRecipe;
         Builder.placePosition = new Vector3(5, 6, 7);
         Builder.placeRotation = Quaternion.Euler(new Vector3(0, 90, 0));
         Builder.CanPlace = true;
         Builder.PlacementCalls = 0;
-        var preflightType = plugin.GetType().Assembly.GetType(
-            "Sirro.BZ.MP.ConstrutorZero.AutoBuildCoordinator", true);
-        var preflightPrefix = preflightType.GetMethod("Prefix",
-            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-        autoLocker.container.Remove(buildSecond);
-        Time.frameCount++;
-        int noStockPackets = Subnautica.Events.Handlers.Storage.NetworkRequests;
-        Assert(!(bool)preflightPrefix.Invoke(null, new object[] { false }) &&
-            !(bool)active.GetValue(null) &&
-            Subnautica.Events.Handlers.Storage.NetworkRequests == noStockPackets,
-            "Auto-build blocks network placement and partial transfers when source stock is insufficient");
-        autoLocker.container.Add(buildSecond);
-        Time.frameCount++;
-        Assert(!Builder.TryPlace(), "Initial building action deferred before any resource consumption");
-        Assert(Builder.PlacementCalls == 0,
-            "Vanilla Builder.TryPlace never runs before all server receipts");
-        Assert(FakeMultiplayerConstruction.PacketsSent == 0,
-            "No BOT Benson construction packet before missing resources are delivered");
-        var patchOrder = Harmony.GetPatchInfo(builderTryPlace).Prefixes
-            .OrderByDescending(p => p.priority).ToList();
-        Assert(patchOrder[0].owner == "sirro.bz.mp.construtor-zero.building" &&
-            patchOrder[0].priority > patchOrder[1].priority,
-            "Construtor ingredient guard runs before MP identity and packet prefixes");
         var autoBuildType = plugin.GetType().Assembly.GetType(
             "Sirro.BZ.MP.ConstrutorZero.AutoBuildCoordinator", true);
         var buildWaiting = autoBuildType.GetProperty("IsWaiting",
             BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-        Assert((bool)buildWaiting.GetValue(null),
-            "Building prefetch waits with original construction pose recorded");
+        var buildPrefix = autoBuildType.GetMethod("Prefix",
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+        var initialBlueprintPackets = FakeMultiplayerConstruction.PacketsSent;
+        int packetsBeforeNoStock = Subnautica.Events.Handlers.Storage.NetworkRequests;
+        Assert((bool)buildPrefix.Invoke(null, new object[] { false }) &&
+            !(bool)active.GetValue(null) &&
+            Subnautica.Events.Handlers.Storage.NetworkRequests == packetsBeforeNoStock,
+            "Insufficient locker stock does not block blueprint or start partial transfer");
+        Assert(!Builder.TryPlace() &&
+            FakeMultiplayerConstruction.PacketsSent == initialBlueprintPackets + 1,
+            "Ordinary multiplayer blueprint packet sent without enough materials");
+        Assert(Builder.PlacementCalls == 0 && !(bool)buildWaiting.GetValue(null),
+            "No vanilla local placement and no deferred blueprint replay");
+        var patchOrder = Harmony.GetPatchInfo(builderTryPlace).Prefixes
+            .OrderByDescending(p => p.priority).ToList();
+        Assert(patchOrder[0].owner == "sirro.bz.mp.construtor-zero.building" &&
+            patchOrder[0].priority > patchOrder[1].priority,
+            "CFC prefix runs before multiplayer sender but NEVER suppresses it");
+
+        // Empty base case: even with all lockers empty and CFC enabled,
+        // the blueprint is placeable so it can be constructed later.
+        autoLocker.container.Clear();
+        Builder.ghostModel = new GameObject();
+        Assert(!Builder.TryPlace() &&
+            FakeMultiplayerConstruction.PacketsSent == initialBlueprintPackets + 2 &&
+            !(bool)active.GetValue(null),
+            "Completely empty inventory and base still allow a new blueprint");
+        autoLocker.container.Add(buildFirst);
+        autoLocker.container.Add(buildSecond);
+        Time.frameCount++;
+        Builder.ghostModel = new GameObject();
+        var beforeAvailable = FakeMultiplayerConstruction.PacketsSent;
+        Assert(!Builder.TryPlace() &&
+            FakeMultiplayerConstruction.PacketsSent == beforeAvailable + 1 &&
+            (bool)active.GetValue(null),
+            "When stock exists, blueprint packet sends immediately and CFC stages materials separately");
+        Assert(!(bool)buildWaiting.GetValue(null),
+            "CFC is never allowed to wait for resources to replay a blueprint");
         Time.frameCount++;
         Player.main.Update();
-        Assert(Builder.PlacementCalls == 0 &&
-            FakeMultiplayerConstruction.PacketsSent == 0,
-            "No original placement OR multiplayer packet before ingredient acknowledgement");
+        var queuedPackets = FakeMultiplayerConstruction.PacketsSent;
         Inventory.main.OnAddItem(buildFirst);
         autoLocker.container.Remove(buildFirst);
         Time.frameCount++;
         Player.main.Update();
-        Assert(Builder.PlacementCalls == 0 &&
-            FakeMultiplayerConstruction.PacketsSent == 0,
-            "Partial server delivery cannot send construction packet");
-        // Pending placement must stay blocked even if the game mode changes
-        // or the ghost temporarily becomes invalid before the next frame.
-        GameModeManager.CraftingRequiresResources = false;
-        Assert(!Builder.TryPlace() && FakeMultiplayerConstruction.PacketsSent == 0,
-            "Pending building still blocked if Creative mode toggles");
-        GameModeManager.CraftingRequiresResources = true;
-        Builder.CanPlace = false;
-        Assert(!Builder.TryPlace() && FakeMultiplayerConstruction.PacketsSent == 0,
-            "Pending building still blocked if placement becomes invalid");
-        Builder.CanPlace = true;
         Inventory.main.OnAddItem(buildSecond);
-        // Race: the second click happens AFTER the last item entered inventory
-        // but BEFORE the coordinator's next scheduled replay frame.
-        Assert(!Builder.TryPlace(),
-            "Second building click stays deferred after ingredients arrive but before replay");
-        Assert(FakeMultiplayerConstruction.PacketsSent == 0,
-            "No premature multiplayer construction packet in final-ACK race window");
+        autoLocker.container.Remove(buildSecond);
         Time.frameCount++;
         Player.main.Update();
-        Assert(FakeMultiplayerConstruction.PacketsSent == 1 &&
-            Builder.PlacementCalls == 0,
-            "One BOT Benson construction request only after two server receipts; vanilla suppressed");
-        Assert(!(bool)buildWaiting.GetValue(null), "Auto build state reset after placement");
-        Time.frameCount++;
-        Player.main.Update();
-        Assert(FakeMultiplayerConstruction.PacketsSent == 1 &&
-            Builder.PlacementCalls == 0, "Auto build cannot emit duplicate multiplayer packets");
+        Assert(FakeMultiplayerConstruction.PacketsSent == queuedPackets &&
+            !(bool)active.GetValue(null) && !(bool)buildWaiting.GetValue(null),
+            "Server deliveries NEVER auto-send a second blueprint placement packet");
+        Assert(Inventory.main.GetPickupCount(TechType.Titanium) == 2,
+            "Resource staging delivers real items for later manual blueprint construction");
 
         Inventory.main.ActualItems.Clear();
         autoLocker.container.Clear();
-        autoLocker.container.Add(new InventoryItem { item = new Pickupable {
-            techType = TechType.Titanium,
-            gameObject = new GameObject { name = "item-retry-a" } } });
-        autoLocker.container.Add(new InventoryItem { item = new Pickupable {
-            techType = TechType.Titanium,
-            gameObject = new GameObject { name = "item-retry-b" } } });
-        Time.frameCount++;
-        Builder.placePosition = new Vector3(5, 6, 7);
-        Builder.placeRotation = Quaternion.Euler(new Vector3(0, 90, 0));
-        Assert(!Builder.TryPlace(), "Second construction attempt staged");
-        Builder.placePosition = new Vector3(6, 6, 7);
-        int countBeforePoseChange = Subnautica.Events.Handlers.Storage.NetworkRequests;
-        Time.frameCount++;
-        Player.main.Update();
-        Assert(!(bool)buildWaiting.GetValue(null),
-            "Moving the construction ghost cancels delayed placement");
-        Assert(FakeMultiplayerConstruction.PacketsSent == 1 &&
-            Builder.PlacementCalls == 0 &&
-            Subnautica.Events.Handlers.Storage.NetworkRequests == countBeforePoseChange,
-            "Changed construction pose sends no further MP packet or placement");
         Builder.CanPlace = false;
-        var buildPrefix = autoBuildType.GetMethod("Prefix",
-            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
         int beforeInvalid = Subnautica.Events.Handlers.Storage.NetworkRequests;
-        Assert((bool)buildPrefix.Invoke(null, new object[] { false }),
-            "Invalid ghost placement passes through original game's rejection path");
-        Assert(!(bool)buildWaiting.GetValue(null) &&
+        Assert((bool)buildPrefix.Invoke(null, new object[] { false }) &&
             Subnautica.Events.Handlers.Storage.NetworkRequests == beforeInvalid,
-            "No container transfers or deferred construction for invalid placement");
+            "Invalid ghost follows original multiplayer rejection with no stock requests");
         Builder.CanPlace = true;
         GameModeManager.CraftingRequiresResources = false;
         int beforeCreativeBuilding = Subnautica.Events.Handlers.Storage.NetworkRequests;
-        Assert((bool)buildPrefix.Invoke(null, new object[] { false }),
-            "Creative mode building follows the original no-cost placement path");
-        Assert(!(bool)buildWaiting.GetValue(null) &&
+        Assert((bool)buildPrefix.Invoke(null, new object[] { false }) &&
             Subnautica.Events.Handlers.Storage.NetworkRequests == beforeCreativeBuilding,
-            "Creative construction does not request locker ingredients");
+            "Creative mode keeps native blueprint path without transfers");
         GameModeManager.CraftingRequiresResources = true;
         autoBuildField.SetValue(null, false);
         autoPlaceField.SetValue(null, false);
