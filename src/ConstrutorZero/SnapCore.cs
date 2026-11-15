@@ -72,6 +72,12 @@ namespace Sirro.BZ.MP.ConstrutorZero
 
     public static class SnapMath
     {
+        public static float RotationAngle(float degrees, float step)
+        {
+            if (step <= 0 || float.IsNaN(degrees) || float.IsInfinity(degrees)) return degrees;
+            return (float)(Math.Round(degrees / step, MidpointRounding.AwayFromZero) * step);
+        }
+
         public static float PlaneAxis(float value, float normal, float grid)
         {
             if (grid <= 0 || float.IsInfinity(value) || float.IsNaN(value) ||
@@ -84,6 +90,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
     {
         internal static bool Enabled = true;
         internal static float Grid = .5f, Fine = .1f;
+        internal static bool RotationEnabled = true;
+        internal static float RotationStep = 45f, FineRotationStep = 5f;
 
         internal static void Load()
         {
@@ -95,7 +103,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 if (!File.Exists(path))
                     File.WriteAllLines(path, new[] {
                         "# Mouse wheel click toggles; LeftCtrl uses the fine grid.",
-                        "enabled=true", "grid=0.5", "fine_grid=0.1" });
+                        "enabled=true", "grid=0.5", "fine_grid=0.1",
+                        "rotation_enabled=true", "rotation_step=45", "fine_rotation_step=5" });
                 foreach (var line in File.ReadAllLines(path))
                 {
                     var pair = line.Split(new[] { '=' }, 2);
@@ -103,6 +112,14 @@ namespace Sirro.BZ.MP.ConstrutorZero
                     var key = pair[0].Trim().ToLowerInvariant();
                     var value = pair[1].Trim();
                     if (key == "enabled") Enabled = value.Equals("true", StringComparison.OrdinalIgnoreCase);
+                    else if (key == "rotation_enabled") RotationEnabled = value.Equals("true", StringComparison.OrdinalIgnoreCase);
+                    else if ((key == "rotation_step" || key == "fine_rotation_step") &&
+                             float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var rot) &&
+                             rot >= 1f && rot <= 90f)
+                    {
+                        if (key == "rotation_step") RotationStep = rot;
+                        else FineRotationStep = rot;
+                    }
                     else if ((key == "grid" || key == "fine_grid") &&
                              float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var size) &&
                              size >= .01f && size <= 5f)
@@ -195,6 +212,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 if (target != null)
                     position = Reflect.Transform(target, "TransformPoint", vectorType, position);
                 __args[1] = position;
+                if (Options.RotationEnabled && IsRotationEnabled())
+                    SnapFloorRotation(__args, vectorType, hit);
                 if (!firstSnapLogged)
                 {
                     var deltaX = Math.Abs(Reflect.Component(before, "x") - Reflect.Component(position, "x"));
@@ -216,6 +235,42 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 }
                 Options.Enabled = false;
             }
+        }
+
+        private static bool IsRotationEnabled()
+        {
+            try
+            {
+                var builder = Reflect.Type("Builder");
+                return (bool)(builder?.GetField("rotationEnabled",
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)
+                    ?.GetValue(null) ?? false);
+            }
+            catch { return false; }
+        }
+
+        private static void SnapFloorRotation(object[] args, Type vectorType, object hit)
+        {
+            if (args.Length < 3 || args[2] == null) return;
+            var worldNormal = hit.GetType().GetProperty("normal")?.GetValue(hit, null);
+            if (worldNormal == null || Math.Abs(Reflect.Component(worldNormal, "y")) < .85f)
+                return; // Do not distort wall or ceiling placement rotation.
+
+            var rotation = args[2];
+            var quaternionType = rotation.GetType();
+            var euler = quaternionType.GetProperty("eulerAngles",
+                BindingFlags.Public | BindingFlags.Instance)?.GetValue(rotation, null);
+            if (euler == null) return;
+            float step = Key("LeftAlt", false) || Key("RightAlt", false)
+                ? Options.FineRotationStep : Options.RotationStep;
+            float y = Reflect.Component(euler, "y");
+            float rounded = SnapMath.RotationAngle(y, step);
+            if (Math.Abs(y - rounded) < .001f) return;
+            Reflect.Set(euler, "y", rounded);
+            var eulerMethod = quaternionType.GetMethod("Euler",
+                BindingFlags.Public | BindingFlags.Static, null, new[] { vectorType }, null);
+            if (eulerMethod != null)
+                args[2] = eulerMethod.Invoke(null, new[] { euler });
         }
 
         private static bool IsWholeBasePiece()
