@@ -744,6 +744,10 @@ public static class Program
         Eq(Builder.placePosition.z,gluedZ,
             "Camera pitch does not move Locker along Z");
 
+        Physics.FloorHeight = -1f;
+        Assert(!Builder.UpdateAllowed(),
+            "Floor below original builder max range cannot be used by a longer downward ray");
+        Physics.FloorHeight = 1.25f;
         Physics.GroundAvailable = false;
         Builder.placePosition = new Vector3(0f,8f,0f);
         Assert(!Builder.UpdateAllowed(),
