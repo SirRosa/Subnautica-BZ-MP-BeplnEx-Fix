@@ -29,7 +29,16 @@ namespace Sirro.BZ.MP.ConstrutorZero
 
         internal static bool Prefix(ref bool __result)
         {
-            if (bypass || !ContainerConfig.Enabled ||
+            if (bypass) return true;
+            // An already deferred click must remain blocked even if the game
+            // temporarily changes affordability, placement validity, or mode
+            // before the next Player.Update processes the final ACK.
+            if (waiting)
+            {
+                __result = false;
+                return false;
+            }
+            if (!ContainerConfig.Enabled ||
                 !ContainerConfig.AutoBuildEnabled || !CraftFromContainersBridge.NetworkActive)
                 return true;
             try
@@ -55,7 +64,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 // event has already made the recipe temporarily affordable. Check
                 // the transaction BEFORE the fast path or a second click could
                 // emit an extra BOT Benson construction packet.
-                if (waiting || RecipePrefetch.IsActive || AutoCraftCoordinator.IsWaiting)
+                if (RecipePrefetch.IsActive || AutoCraftCoordinator.IsWaiting)
                 {
                     __result = false;
                     return false;
