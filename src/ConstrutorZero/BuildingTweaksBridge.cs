@@ -394,14 +394,25 @@ namespace Sirro.BZ.MP.ConstrutorZero
 
         private static void UpdateAllowedPrefix()
         {
-            if (!Cfg.ExpandedSurfaces) return;
+            if (!Cfg.ExpandedSurfaces)
+            {
+                RestorePlacementFlags();
+                return;
+            }
             var builder = Reflect.Type("Builder");
             if (builder == null) return;
             try
             {
-                // Only furniture ghost: restrictions for base pieces are controlled by MP.
+                // These are global Builder flags. A previous furniture ghost
+                // can leave them expanded if the prefab changes without End().
+                // Never carry the old furniture permissions into a base piece
+                // or an unknown / missing ghost.
                 var prefab = Value(builder, "prefab");
-                if (HasComponent(prefab, "ConstructableBase")) return;
+                if (prefab == null || HasComponent(prefab, "ConstructableBase"))
+                {
+                    RestorePlacementFlags();
+                    return;
+                }
                 if (originalPlacementFlags == null)
                 {
                     var values = new bool[PlacementFlagNames.Length];
