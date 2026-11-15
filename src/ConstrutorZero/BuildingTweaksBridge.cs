@@ -68,7 +68,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 Hook("Builder", "ValidateOutdoor", null, nameof(AllowedPostfix));
                 Hook("Builder", "GetObstacles", null, nameof(GetObstaclesPostfix));
                 Hook("Builder", "CheckSpace", null, nameof(CheckSpacePostfix));
-                Hook("Builder", "TryPlace", null, nameof(TryPlacePostfix));
+                Hook("Builder", "TryPlace", nameof(TryPlacePrefix), nameof(TryPlacePostfix));
                 Hook("Constructable", "DeconstructionAllowed", nameof(DeconstructionPrefix), null);
                 Hook("BaseDeconstructable", "DeconstructionAllowed", nameof(DeconstructionPrefix), null);
                 Hook("Builder", "CanDestroyObject", null, nameof(CanDestroyObjectPostfix));
@@ -208,6 +208,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
 
         private static void EndPostfix()
         {
+            AutoBuildCoordinator.BuilderEnded();
             frozen = false; freezeInitialized = false;
             attachToTarget = false; fullOverride = false;
             RestoreRanges();
@@ -400,6 +401,9 @@ namespace Sirro.BZ.MP.ConstrutorZero
             __result = true;
             return false;
         }
+
+        private static bool TryPlacePrefix(ref bool __result) =>
+            AutoBuildCoordinator.Prefix(ref __result);
 
         private static void TryPlacePostfix(bool __result)
         {
