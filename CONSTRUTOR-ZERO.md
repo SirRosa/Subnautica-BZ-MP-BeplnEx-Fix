@@ -26,12 +26,12 @@ Cel: jedna natywna DLL `Sirro.BZ.MP.ConstrutorZero.dll`, bez BepInEx, Nautilus i
 | Building Tweaks: blokada niszczenia chronionych obiektów | Filtr prefabów z komponentami Creature / BaseGhost / Constructable / LifepodDrop i blacklistą nazw | Do testu |
 | Building Tweaks: naprawa PowerConsumer | Odczyt z powerRelay, gdy brak baseComp | Do testu |
 | Building Tweaks: free placement | KeypadDivide przełącza; Keypad4/6, 2/8, +/- przesuwają pozycję ghosta | Do testu; obecnie w globalnych osiach, inaczej niż oryginał |
-| Building Tweaks: Full Override | Płatki walidacji, obstacles, deconstruction za opcjonalną bramką `allow_unsafe_world_changes` | **WYŁĄCZONE domyślnie**: może desynchronizować |
+| Building Tweaks: Full Override | Płatki walidacji, obstacles, deconstruction z bramką `allow_unsafe_world_changes` oraz bezwzględną blokadą przy aktywnym multiplayerze | **WYŁĄCZONE domyślnie**: może desynchronizować |
 | Building Tweaks: Attach to Target (mobiles/creatures/vehicles) | Wykrywa polecenie, ale **nie wykonuje parenting** | **NIEDOSTĘPNE**: brak synchronizacji hierarchii |
 | Building Tweaks: pillars, Base.Start/Update, BaseGhost.Finish, player rescue | Nieprzeniesione | Wymaga odrębnej implementacji i testów |
 | Pozostałe efekty typu collider/raycast/move parent | Nieprzeniesione | Brak pełnej zgodności |
 
-**WAŻNE:** nie włączaj `allow_unsafe_world_changes=true` na współdzielonym zapisie. Możliwość ustawienia tej flagi nie oznacza wsparcia serwera multiplayer.
+**WAŻNE:** nie włączaj `allow_unsafe_world_changes=true` na współdzielonym zapisie. Flaga `allow_unsafe_world_changes=true` **nie odblokowuje** funkcji podczas aktywnej sesji multiplayer. Zmiana jest blokowana w kodzie, niezależnie od konfiguracji.
 
 ## Instalacja na kopii zapisu
 
@@ -75,3 +75,21 @@ Pełne wsparcie wymaga **osobnego klient-serwer protokołu parentowania, walidac
 - Publiczny multiplayer (uwaga: może być nieaktualny): https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer
 
 Nie kopiujemy zamkniętych DLL BOT Bensona do repozytorium. Jest to nowa implementacja eksperymentalna, a nie oficjalny port tych projektów.
+
+## Automatyczna weryfikacja (2026-11-15)
+
+GitHub Actions uruchamia `src/IntegrationHarness`, czyli symulowany runtime z Harmony 2.3.3 (wersja referencyjna z oficjalnych wtyczek multiplayera). Testuje:
+- aktywację natywnego `SubnauticaPlugin`, `Harmony.Patch`, instalację patchy `Builder`, zasilania i walidacji;
+- pozycjonowanie siatki `0.5 m`, `0.1 m`, obrót `45°`/`5°` (w tym ujemne kąty);
+- rozbudowanie i przywrócenie zasięgów budowania (również prefabu);
+- manualne przesunięcie ghosta, zatrzymanie i przywrócenie fabrycznego pozycjonowania;
+- zabezpieczenie dekonstrukcji/kolizji/Full Override przy aktywnym multiplayerze;
+- odpinanie patchy tylko tej wtyczki zgodne z Harmony 2.3.3 (`UnpatchAll(pluginId)`).
+
+CI rozwiązało konkretny problem z `UnpatchSelf` — nie występuje w Harmony 2.3.3, podczas gdy nowsze HarmonyX taką metodę obsługują.
+
+**Czego te testy NIE dowodzą:** zgodności wywołań `Assembly-CSharp` w rzeczywistej Subnautica BZ; aktywacji wszystkich poszczególnych hooków wobec właściwej gry; synchronizacji przy dwóch klientach; poprawności save po ponownym dołączeniu lub restarcie; pełnej zgodności z oryginalnymi modami.
+
+Przy tym zakresie zewnętrznych zależności **nie należy oznaczać tego projektu jako „pełna wersja multiplayer 3.0.1”** i nie należy scalać go do `main` bez prawdziwych testów z grą.
+
+Raport CI: https://github.com/SirRosa/Subnautica-BZ-MP-BeplnEx-Fix/actions
