@@ -14,7 +14,19 @@ namespace UnityEngine
     }
     public static class Time
     {
-        public static int frameCount { get; set; } = 1;
+        private static int frame;
+        public static bool ThrowOnFrameRead;
+        public static int frameCount
+        {
+            get
+            {
+                if (ThrowOnFrameRead)
+                    throw new InvalidOperationException(
+                        "Simulated Unity Time.frameCount getter failure");
+                return frame;
+            }
+            set { frame = value; }
+        }
         public static float deltaTime { get; set; } = 0.016f;
     }
     public static class Input
