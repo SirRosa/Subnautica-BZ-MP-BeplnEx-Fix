@@ -560,8 +560,23 @@ public static class Program
         Input.Held.Add(KeyCode.Keypad4);
         Time.frameCount++;
         Builder.Update();
-        Assert(Builder.placePosition.x < 1,"Free placement moves ghost");
+        Eq(Builder.placePosition.x, 1f,
+            "MP free placement cannot move ghost after stale collision check");
         Input.Clear();
+
+        // Preserve the original free placement tool in offline mode only.
+        Subnautica.API.Features.Network.IsMultiplayerActive = false;
+        Time.frameCount++;
+        Input.Down.Add(KeyCode.KeypadDivide);
+        Builder.Update();
+        Input.Clear();
+        Time.frameCount++;
+        Input.Held.Add(KeyCode.Keypad4);
+        Builder.Update();
+        Assert(Builder.placePosition.x < 1f,
+            "Offline free placement still moves ghost");
+        Input.Clear();
+        Subnautica.API.Features.Network.IsMultiplayerActive = true;
         Builder.End();
         ghostPosition = new Vector3(-99, -99, -99);
         Builder.SetDefaultPlaceTransform(ref ghostPosition, ref ghostRotation);
