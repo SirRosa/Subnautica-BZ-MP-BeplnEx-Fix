@@ -69,7 +69,8 @@ Oryginalny BepInEx Craft From Containers po nieudanym `Inventory.DestroyItem` wy
 ## Testy i warunki wydania
 
 - `src/IntegrationHarness` symuluje patche Harmony 2.3.3 oraz autorytatywne żądania transferu skrzynka -> gracz po konkretnym `ItemId`.
-- Weryfikuje brak fałszowania liczby składników, brak usunięcia przed ACK, blokowanie duplikatów, zasięg, allow-list, 2-etapowe potwierdzanie składników, anulowanie UI oraz pozę budowli i pierwszeństwo patcha przed nadawaniem pakietu multiplayera (99 testów).
+- Weryfikuje brak fałszowania liczby składników, brak usunięcia przed ACK, blokowanie duplikatów, zasięg, allow-list, 2-etapowe potwierdzanie składników, anulowanie UI oraz pozę budowli i pierwszeństwo patcha przed nadawaniem pakietu multiplayera (122 testy).
+- Nowe regresje: powtarzające się składniki TechType, podwójne kliknięcie między ostatnim ACK a wykonaniem Builder.TryPlace oraz przywracanie dozwolonych powierzchni po Builder.End.
 - Nie symuluje prawdziwych DLL `Assembly-CSharp` ani całego BOT Benson Server 3.0.1 (publiczny kod serwera jest starszy).
 - Do ostatecznej akceptacji wymagane są: rzeczywiste API aktualnych DLL gry, testy dwóch klientów z równoczesnym craftowaniem i budowaniem, wylogowanie, ponowne dołączenie i restart serwera, plus kontrola zapisów.
 
