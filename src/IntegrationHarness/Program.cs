@@ -93,6 +93,69 @@ public static class Program
         locker.ResetContainer();
         Assert((int)storages.GetValue(null) == 1,
             "Registry refreshed on actual StorageContainer.ResetContainer");
+        // Multi-ingredient, multi-packet prefetch: the recipe is observed but does
+        // not cause automatic consumption, and a fake client inventory delivery
+        // must carry the SAME server-authorized item ID before the next request.
+        var manual = confType.GetField("ManualPrefetchEnabled",
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+        manual.SetValue(null, true);
+        var recipe = new uGUI_RecipeEntry { techType = TechType.TestRecipe };
+        recipe.UpdateIngredients(null, false);
+        var tracker = plugin.GetType().Assembly.GetType(
+            "Sirro.BZ.MP.ConstrutorZero.RecipePrefetch", true);
+        var start = tracker.GetMethod("BeginLastObserved",
+            BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+        var pump = tracker.GetMethod("Pump",
+            BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+        var active = tracker.GetProperty("IsActive",
+            BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+        var inFlight = tracker.GetProperty("InFlightId",
+            BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+        Action<string> log = msg => Console.WriteLine("CFC: " + msg);
+        var second = new InventoryItem { item = new Pickupable {
+            techType = TechType.Titanium, gameObject = new GameObject { name = "item-b" } } };
+        var third = new InventoryItem { item = new Pickupable {
+            techType = TechType.Titanium, gameObject = new GameObject { name = "item-c" } } };
+        locker.container.Add(second);
+        locker.container.Add(third);
+        Assert((bool)start.Invoke(null, new object[] { log }),
+            "Complete recipe prepared from TechData without mutating inventory");
+        Assert(Subnautica.Events.Handlers.Storage.NetworkRequests == 1,
+            "UI recipe preview did not send unsolicited requests");
+        pump.Invoke(null, new object[] { log });
+        Assert((string)inFlight.GetValue(null) == "item-b",
+            "First missing ingredient enters server-only in-flight state");
+        Assert(Subnautica.Events.Handlers.Storage.NetworkRequests == 2,
+            "Only one new server transfer requested");
+        Inventory.main.OnAddItem(new InventoryItem { item = new Pickupable {
+            techType = TechType.Titanium, gameObject = new GameObject { name = "intruder" } } });
+        Assert((string)inFlight.GetValue(null) == "item-b",
+            "Unrelated inventory delivery does not acknowledge pending transfer");
+        pump.Invoke(null, new object[] { log });
+        Assert(Subnautica.Events.Handlers.Storage.NetworkRequests == 2,
+            "Second transfer blocked until matching inventory acknowledgement");
+        Inventory.main.OnAddItem(second);
+        Assert((string)inFlight.GetValue(null) == null,
+            "Matching Inventory.OnAddItem confirms delivery");
+        locker.container.Remove(second);
+        pump.Invoke(null, new object[] { log });
+        Assert((string)inFlight.GetValue(null) == "item-c",
+            "Second ingredient can be fetched only after first acknowledgement");
+        Assert(Subnautica.Events.Handlers.Storage.NetworkRequests == 3,
+            "Server receives the second ingredient request");
+        Inventory.main.OnAddItem(third);
+        Assert(!(bool)active.GetValue(null), "Recipe transfer queue completed safely");
+        Assert(Inventory.main.GetPickupCount(TechType.Titanium) == 0,
+            "Plugin never falsifies client ingredient counts after delivery");
+        recipe.UpdateIngredients(null, false);
+        Assert((bool)start.Invoke(null, new object[] { log }),
+            "Another prefetch can be prepared after prior completion");
+        Subnautica.API.Features.Network.IsMultiplayerActive = false;
+        pump.Invoke(null, new object[] { log });
+        Assert(!(bool)active.GetValue(null),
+            "World disconnect cancels all outstanding ingredient requests");
+        Subnautica.API.Features.Network.IsMultiplayerActive = true;
+        manual.SetValue(null, false);
 
         var hit = new RaycastHit { normal = new Vector3(0,1,0), transform = new Transform() };
         var pos = new Vector3(1.37f, 0f, 2.74f);
