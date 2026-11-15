@@ -37,6 +37,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
         private static Type harmonyMethod;
         private static object lastRequestedTechType;
         private static int lastTransferFrame = -1;
+        private static int lastPruneFrame = -1;
         private static int installedHooks;
         private static bool enabled;
 
@@ -114,6 +115,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
             Storage.Clear();
             PendingItemIds.Clear();
             lastRequestedTechType = null;
+            lastPruneFrame = -1;
             installedHooks = 0;
         }
 
@@ -169,7 +171,14 @@ namespace Sirro.BZ.MP.ConstrutorZero
         private static void PlayerUpdate()
         {
             if (!enabled || !ContainerConfig.Enabled) return;
-            PruneDeadStorages();
+            var time = Reflect.Type("UnityEngine.Time");
+            var currentFrame = Convert.ToInt32(Get(time, "frameCount") ?? 0);
+            if (lastPruneFrame < 0 || currentFrame < lastPruneFrame ||
+                currentFrame - lastPruneFrame >= 240)
+            {
+                lastPruneFrame = currentFrame;
+                PruneDeadStorages();
+            }
             if (!ContainerConfig.ManualPrefetchEnabled)
                 return;
             try
