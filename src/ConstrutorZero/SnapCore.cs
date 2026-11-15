@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Globalization;
+using System.Collections;
 using System.Runtime.CompilerServices;
 using Subnautica.API.Enums;
 using Subnautica.API.Features;
@@ -90,6 +91,12 @@ namespace Sirro.BZ.MP.ConstrutorZero
             return (float)(Math.Round(degrees / step, MidpointRounding.AwayFromZero) * step);
         }
 
+        // Position of a prefab pivot whose lowest bounds corner must sit
+        // exactly on the physical floor hit. This is independent of the
+        // camera-ray height and of grid rounding.
+        public static float GroundPivotHeight(float surfaceY, float lowestCornerY) =>
+            surfaceY - lowestCornerY;
+
         public static float PlaneAxis(float value, float normal, float grid)
         {
             if (grid <= 0 || float.IsInfinity(value) || float.IsNaN(value) ||
@@ -140,6 +147,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
         internal static bool Enabled = true;
         internal static float Grid = .5f, Fine = .1f;
         internal static bool RotationEnabled = true;
+        internal static bool GroundAlignEnabled = true;
         internal static float RotationStep = 45f, FineRotationStep = 5f;
 
         internal static void Load()
@@ -153,6 +161,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
                     File.WriteAllLines(path, new[] {
                         "# Mouse wheel click toggles; LeftCtrl uses the fine grid.",
                         "enabled=true", "grid=0.5", "fine_grid=0.1",
+                        "# Align ground furniture pivot using actual Builder bounds and ray hit.",
+                        "ground_align=true",
                         "rotation_enabled=true", "rotation_step=45", "fine_rotation_step=5" });
                 foreach (var line in File.ReadAllLines(path))
                 {
@@ -161,6 +171,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
                     var key = pair[0].Trim().ToLowerInvariant();
                     var value = pair[1].Trim();
                     if (key == "enabled") Enabled = value.Equals("true", StringComparison.OrdinalIgnoreCase);
+                    else if (key == "ground_align") GroundAlignEnabled =
+                        value.Equals("true", StringComparison.OrdinalIgnoreCase);
                     else if (key == "rotation_enabled") RotationEnabled = value.Equals("true", StringComparison.OrdinalIgnoreCase);
                     else if ((key == "rotation_step" || key == "fine_rotation_step") &&
                              float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var rot) &&
@@ -276,6 +288,31 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 Reflect.Set(position, "x", tangent[0]);
                 Reflect.Set(position, "y", tangent[1]);
                 Reflect.Set(position, "z", tangent[2]);
+
+                // The old tangent grid retained the PRE-EXISTING vertical
+                // offset. For floor furniture this could be the camera/wall
+                // placement depth, leaving lockers floating despite a valid
+                // floor raycast. Anchor the prefab's lowest collision corner
+                // to the actual hit.point (not the camera cursor elevation).
+                // Never apply to wall, ceiling or arbitrary base pieces.
+                if (Options.GroundAlignEnabled &&
+                    Reflect.Component(normal, "y") >= .985f &&
+                    TryLowestPrefabCornerY(out var bottom))
+                {
+                    var hitPoint = hit.GetType().GetProperty("point",
+                        BindingFlags.Public | BindingFlags.Instance)
+                        ?.GetValue(hit, null);
+                    if (hitPoint != null)
+                    {
+                        if (target != null)
+                            hitPoint = Reflect.Transform(target,
+                                "InverseTransformPoint", vectorType, hitPoint);
+                        var height = SnapMath.GroundPivotHeight(
+                            Reflect.Component(hitPoint, "y"), bottom);
+                        if (!float.IsNaN(height) && !float.IsInfinity(height))
+                            Reflect.Set(position, "y", height);
+                    }
+                }
                 if (target != null)
                     position = Reflect.Transform(target, "TransformPoint", vectorType, position);
                 __args[1] = position;
@@ -303,6 +340,46 @@ namespace Sirro.BZ.MP.ConstrutorZero
                     Trace.Info("ERROR: snapping disabled for this session: " + ex);
                 }
                 Options.Enabled = false;
+            }
+        }
+
+        private static bool TryLowestPrefabCornerY(out float bottom)
+        {
+            bottom = 0f;
+            try
+            {
+                var builder = Reflect.Type("Builder");
+                const BindingFlags flags = BindingFlags.Public |
+                    BindingFlags.NonPublic | BindingFlags.Static;
+                var bounds = builder?.GetField("bounds", flags)?.GetValue(null) ??
+                    builder?.GetProperty("bounds", flags)?.GetValue(null, null);
+                if (!(bounds is IEnumerable list)) return false;
+                bool found = false;
+                float lowest = float.PositiveInfinity;
+                foreach (var obb in list)
+                {
+                    var corners = obb?.GetType().GetMethod("GetCorners",
+                        BindingFlags.Public | BindingFlags.Instance,
+                        null, Type.EmptyTypes, null)?.Invoke(obb, null)
+                        as IEnumerable;
+                    if (corners == null) continue;
+                    foreach (var corner in corners)
+                    {
+                        if (corner == null) continue;
+                        var cy = Reflect.Component(corner, "y");
+                        if (float.IsNaN(cy) || float.IsInfinity(cy)) continue;
+                        if (cy < lowest) lowest = cy;
+                        found = true;
+                    }
+                }
+                if (!found || Math.Abs(lowest) > 10f) return false;
+                bottom = lowest;
+                return true;
+            }
+            catch
+            {
+                // Unrecognized bounds API must NOT move furniture vertically.
+                return false;
             }
         }
 
