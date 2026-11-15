@@ -252,6 +252,36 @@ public static class Program
             "Fabricator has zero local recipe materials before UI override");
         Assert(gui.ActionAvailable(craftNode),
             "Fabricator UI advertises complete nearby locker stock");
+
+        // All three UI surfaces must now agree, without granting any
+        // invented inventory items or sending network requests on hover.
+        var pinned = new uGUI_RecipeEntry { techType = TechType.TestRecipe };
+        pinned.UpdateIngredients(null, false);
+        Assert(pinned.items.Count == 1 &&
+            pinned.items[0].text.color == "green" &&
+            pinned.items[0].DisplayCount >= 2,
+            "Pinned recipe shows locker materials green, not red");
+        var tooltip = new TooltipData();
+        TooltipFactory.CraftRecipe(TechType.TestRecipe, false, tooltip);
+        Assert(tooltip.icons.Count == 1 &&
+            tooltip.icons[0].text.Contains("#94DE00FF"),
+            "Fabricator ingredient tooltip shows server-advisory locker stock green");
+        int beforeRecipeHoverPackets = Subnautica.Events.Handlers.Storage.NetworkRequests;
+        int beforeSnapshotEnumerations = autoLocker.container.Enumerations;
+        for (int repeat = 0; repeat < 40; repeat++)
+        {
+            gui.ActionAvailable(craftNode);
+            pinned.UpdateIngredients(null, false);
+            TooltipFactory.CraftRecipe(TechType.TestRecipe, false, new TooltipData());
+        }
+        Assert(autoLocker.container.Enumerations - beforeSnapshotEnumerations <= 1,
+            "Repeated hover and 40 recipe checks reuse one all-item snapshot");
+        Assert(Subnautica.Events.Handlers.Storage.NetworkRequests ==
+            beforeRecipeHoverPackets &&
+            Inventory.main.GetPickupCount(TechType.Titanium) == 0,
+            "Green UI previews cannot move items or fake crafting resources");
+        Assert(ErrorMessage.HudMessages == 0,
+            "Routine CFC operations do not pollute the HUD by default");
         Assert(Inventory.main.GetPickupCount(TechType.Titanium) == 0 &&
             Subnautica.Events.Handlers.Storage.NetworkRequests == beforeUi,
             "UI-only availability cannot mutate inventory or send a packet");
@@ -555,6 +585,25 @@ public static class Program
             "Ground grid never rounds surface altitude up or down");
         Eq(groundPos.x,1.5f,"Ground grid still rounds tangent X");
         Eq(groundPos.z,2.5f,"Ground grid still rounds tangent Z");
+        Builder.bounds.Add(new OrientedBounds(
+            new Vector3(-0.5f,-0.95f,-0.5f),
+            new Vector3(0.5f,0.95f,0.5f)));
+        var physicalFloor = new RaycastHit {
+            normal = new Vector3(0f,1f,0f),
+            point = new Vector3(1.36f,3.2f,2.7f),
+            transform = null
+        };
+        var airborneFurniture = new Vector3(1.37f,6.5f,2.74f);
+        var furnitureRotation = Quaternion.Euler(new Vector3(0,0,0));
+        Builder.SetPlaceOnSurface(physicalFloor,
+            ref airborneFurniture, ref furnitureRotation);
+        Eq(airborneFurniture.y,4.15f,
+            "Airborne floor furniture pivot moves to actual floor hit + bounds offset");
+        Eq(airborneFurniture.x,1.5f,
+            "Ground anchoring preserves X grid");
+        Eq(airborneFurniture.z,2.5f,
+            "Ground anchoring preserves Z grid");
+        Builder.bounds.Clear();
         var slopeHit = new RaycastHit { normal = new Vector3(.3f,.95f,.1f), transform = null };
         var slopePos = new Vector3(1.37f,13.337f,2.74f);
         Builder.SetPlaceOnSurface(slopeHit, ref slopePos, ref groundRotation);
@@ -596,6 +645,8 @@ public static class Program
             "Base-piece position remains original network ghost position");
         Eq(baseRotation.eulerAngles.y,43f,
             "Base-piece rotation remains original network orientation");
+        Assert(Builder.bounds.Count == 0,
+            "Ground anchoring test left no global Builder bounds state");
         Builder.prefab = box;
 
         // Local/world transforms are not identity: the grid must be defined
