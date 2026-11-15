@@ -96,6 +96,43 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 Math.Abs(normal) >= .999f) return value;
             return (float)(Math.Round(value / grid, MidpointRounding.AwayFromZero) * grid);
         }
+
+        /// <summary>
+        /// Grid on the TANGENT plane, not on all world axes. In particular,
+        /// never quantize ground height (Y): that lifted placed lockers above
+        /// terrain or buried them underneath it. For sloped surfaces, project
+        /// the horizontal grid displacement back onto the hit tangent plane.
+        /// All values are in the hit object's local coordinate system.
+        /// </summary>
+        public static float[] SurfacePosition(float x, float y, float z,
+            float nx, float ny, float nz, float grid)
+        {
+            var original = new[] { x, y, z };
+            if (grid <= 0f || float.IsNaN(grid) || float.IsInfinity(grid))
+                return original;
+            var n = new[] { nx, ny, nz };
+            for (int i = 0; i < 3; i++)
+                if (float.IsNaN(original[i]) || float.IsInfinity(original[i]) ||
+                    float.IsNaN(n[i]) || float.IsInfinity(n[i]))
+                    return original;
+
+            int normalAxis = 0;
+            if (Math.Abs(n[1]) > Math.Abs(n[normalAxis])) normalAxis = 1;
+            if (Math.Abs(n[2]) > Math.Abs(n[normalAxis])) normalAxis = 2;
+            if (Math.Abs(n[normalAxis]) < .01f) return original;
+            var result = (float[])original.Clone();
+            double tangentProjection = 0;
+            for (int i = 0; i < 3; i++)
+            {
+                if (i == normalAxis) continue;
+                result[i] = (float)(Math.Round(original[i] / grid,
+                    MidpointRounding.AwayFromZero) * grid);
+                tangentProjection += n[i] * (result[i] - original[i]);
+            }
+            result[normalAxis] = (float)(
+                original[normalAxis] - tangentProjection / n[normalAxis]);
+            return result;
+        }
     }
 
     internal static class Options
@@ -229,9 +266,16 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 }
                 float grid = (Key("LeftControl", false) || Key("RightControl", false))
                     ? Options.Fine : Options.Grid;
-                foreach (var axis in new[] { "x", "y", "z" })
-                    Reflect.Set(position, axis, SnapMath.PlaneAxis(
-                        Reflect.Component(position, axis), Reflect.Component(normal, axis), grid));
+                var tangent = SnapMath.SurfacePosition(
+                    Reflect.Component(position, "x"),
+                    Reflect.Component(position, "y"),
+                    Reflect.Component(position, "z"),
+                    Reflect.Component(normal, "x"),
+                    Reflect.Component(normal, "y"),
+                    Reflect.Component(normal, "z"), grid);
+                Reflect.Set(position, "x", tangent[0]);
+                Reflect.Set(position, "y", tangent[1]);
+                Reflect.Set(position, "z", tangent[2]);
                 if (target != null)
                     position = Reflect.Transform(target, "TransformPoint", vectorType, position);
                 __args[1] = position;
