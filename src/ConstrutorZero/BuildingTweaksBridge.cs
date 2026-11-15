@@ -110,6 +110,16 @@ namespace Sirro.BZ.MP.ConstrutorZero
                         var priority = hmtype.GetField("priority", All);
                         if (priority != null) priority.SetValue(args[2], 800);
                     }
+                    // BOT Benson patches Builder.TryPlace with a Harmony Prefix
+                    // that SENDS THE CONSTRUCTION PACKET and returns false.
+                    // Our missing-ingredient guard MUST execute before that
+                    // prefix or a deferred build would still reach the server.
+                    // Priority.First (800) is used by MP's identity prefix.
+                    if (methodName == "TryPlace" && args[1] != null)
+                    {
+                        var priority = args[1].GetType().GetField("priority", All);
+                        if (priority != null) priority.SetValue(args[1], 1000);
+                    }
                     patchMethod.Invoke(harmony, args);
                     patched++;
                     Trace.Info("BUILDING_HOOK: " + typeName + "." + methodName +
