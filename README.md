@@ -1,7 +1,7 @@
 # Construtor Zero — stabilized release candidate for Below Zero MP 3.0.1
 
-**v0.3.1-rc2: hardened candidate; production multiplayer stability is NOT YET VERIFIED.**
-See [STABILIZATION-301.md](STABILIZATION-301.md) for verified safeguards, installation, limitations and mandatory two-client acceptance tests. This branch integrates
+**v0.3.2-rc3: candidate with fixes for CFC locker discovery, terrain snapping and G furniture clipping; real two-client re-test REQUIRED.**
+See [GAMEPLAY-FIXES-301.md](GAMEPLAY-FIXES-301.md) for the user-reported defects, installation/configuration changes and re-test checklist; background in [STABILIZATION-301.md](STABILIZATION-301.md) for verified safeguards, installation, limitations and mandatory two-client acceptance tests. This branch integrates
 SnapBuilder and Building Tweaks porting work with the safe starting point for
 Craft From Containers. Full multiplayer feature parity is **not implemented**.
 
