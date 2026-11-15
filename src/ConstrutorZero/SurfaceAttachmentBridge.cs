@@ -439,11 +439,13 @@ namespace Sirro.BZ.MP.ConstrutorZero
 
         private static void KeepLastSurfaceGhost(Type builder, object prefab)
         {
-            // Never allow placement on a missing/invalid ray. Holding the
-            // previously anchored *visual* for a short time avoids the
-            // disorienting red ghost following the camera vertically.
+            // Never allow placement on a missing/invalid ray. Keep the
+            // ghost visually at its LAST verified surface for this prefab
+            // until another legal hit arrives or Builder.End resets it.
+            // A time-based expiry made it detach and follow camera pitch
+            // again after 450ms, contrary to floor-only placement rules.
+            // __result stays false: stale visual poses can NEVER be placed.
             if (!ReferenceEquals(prefab, lastPrefab) ||
-                DateTime.UtcNow - lastValidUtc > TimeSpan.FromMilliseconds(450) ||
                 lastPosition == null || lastRotation == null) return;
             Write(builder, "placePosition", lastPosition);
             Write(builder, "placeRotation", lastRotation);
