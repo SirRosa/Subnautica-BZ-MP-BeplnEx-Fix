@@ -103,6 +103,31 @@ public static class Program
             "UI scans both locker enumerators in one shared snapshot");
         sceneLocker.container.Clear();
 
+        // Fetch the config type directly to check the effective 100m range,
+        // not merely the hard-coded default or an unstreamed remote locker.
+        var cfcConfigType = plugin.GetType().Assembly.GetType(
+            "Sirro.BZ.MP.ConstrutorZero.ContainerConfig", true);
+        var distanceField = cfcConfigType.GetField("RangeMeters",
+            BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+        Assert((float)distanceField.GetValue(null) == 100f,
+            "Default configured Craft From Containers range is 100m");
+        locker.storageRoot.position = new Vector3(90,0,0);
+        cfcType.GetMethod("RefreshAvailabilityBeforePlacement",
+            BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public)
+            .Invoke(null, null);
+        Assert((int)stockCounter.Invoke(null, new object[] { TechType.Titanium }) == 1,
+            "Loaded locker at 90m is included by the configured 100m range");
+        locker.storageRoot.position = new Vector3(110,0,0);
+        cfcType.GetMethod("RefreshAvailabilityBeforePlacement",
+            BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public)
+            .Invoke(null, null);
+        Assert((int)stockCounter.Invoke(null, new object[] { TechType.Titanium }) == 0,
+            "Loaded locker beyond 100m is excluded by actual distance filtering");
+        locker.storageRoot.position = new Vector3(2,0,0);
+        cfcType.GetMethod("RefreshAvailabilityBeforePlacement",
+            BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public)
+            .Invoke(null, null);
+
         var requestOne = cfcType.GetMethod("TryRequestOne",
             BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
         locker.storageRoot.position = new Vector3(250, 0, 0);
