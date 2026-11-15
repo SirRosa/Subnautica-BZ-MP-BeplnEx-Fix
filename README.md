@@ -1,6 +1,6 @@
 # Construtor Zero — stabilized release candidate for Below Zero MP 3.0.1
 
-**v0.3.0-rc1: hardened build; production multiplayer stability is NOT YET VERIFIED.**
+**v0.3.1-rc2: hardened candidate; production multiplayer stability is NOT YET VERIFIED.**
 See [STABILIZATION-301.md](STABILIZATION-301.md) for verified safeguards, installation, limitations and mandatory two-client acceptance tests. This branch integrates
 SnapBuilder and Building Tweaks porting work with the safe starting point for
 Craft From Containers. Full multiplayer feature parity is **not implemented**.
@@ -25,6 +25,8 @@ moving-parent attachment is not supported without a new server protocol.
 Code: [Construtor Zero source](src/ConstrutorZero)
   | [ABI audit](ABI-AUDIT-301.md)
   | [feature parity status](CONSTRUTOR-ZERO-PARITY.md).
+
+New in rc2: an unexpected Harmony/Unity exception disables CFC and clears pending operations rather than breaking Player.Update; furniture auto-build preflights full local ingredient availability before any network transfer. CI verifies these failure paths; the server is still authoritative.
 
 Test coverage now includes real-ABI-based fabricator UI gating, exact ItemId + TechType acknowledgement, UI deselection, race and disconnect cancellation, stale-locker quarantine, base/furniture flag restoration, geometry rollback and wall/ceiling snap. CI pass counts are reported by the final workflow run, not treated as a gameplay certification.
 
