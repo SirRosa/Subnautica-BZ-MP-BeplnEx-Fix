@@ -509,6 +509,37 @@ public static class Program
             "Expanded furniture placement flags applied while ghost is active");
         Assert(Builder.allowedSurfaceTypes.Contains(SurfaceType.Ceiling),
             "Expanded ceiling surface available while building furniture");
+
+        // Switching ghosts without Builder.End must not leak permissive
+        // furniture flags onto native base modules or a missing prefab.
+        var changingBasePrefab = new GameObject();
+        changingBasePrefab.AddComponent(new ConstructableBase());
+        Builder.prefab = changingBasePrefab;
+        Builder.UpdateAllowed();
+        Assert(!Builder.allowedInBase && !Builder.allowedOutside &&
+            !Builder.allowedSurfaceTypes.Contains(SurfaceType.Ceiling),
+            "Base ghost immediately restores vanilla global Builder permissions");
+        Builder.prefab = null;
+        Builder.UpdateAllowed();
+        Assert(!Builder.allowedInBase && !Builder.allowedOutside,
+            "Missing prefab cannot gain expanded furniture permissions");
+        Builder.prefab = box;
+        Builder.UpdateAllowed();
+        Assert(Builder.allowedInBase && Builder.allowedOutside &&
+            Builder.allowedSurfaceTypes.Contains(SurfaceType.Ceiling),
+            "Furniture permissions reapply only after valid furniture ghost resumes");
+
+        var expandedField = cfg.GetField("ExpandedSurfaces",
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+        expandedField.SetValue(null, false);
+        Builder.UpdateAllowed();
+        Assert(!Builder.allowedInBase && !Builder.allowedOutside &&
+            !Builder.allowedSurfaceTypes.Contains(SurfaceType.Ceiling),
+            "Turning off expanded surfaces restores original Builder flags");
+        expandedField.SetValue(null, true);
+        Builder.UpdateAllowed();
+        Assert(Builder.allowedInBase && Builder.allowedOutside,
+            "Re-enabling expanded surfaces takes effect only for valid furniture");
         Assert(!Builder.ValidateOutdoor(new GameObject()),"Unsafe outdoor override blocked");
         unsafeField.SetValue(null, false);
         string deconstructReason = null;
