@@ -236,11 +236,39 @@ namespace Sirro.BZ.MP.ConstrutorZero
 
         internal static void Report(string message) => Info(message);
 
-        private static bool CraftActionPrefix(object __instance, object[] __args) =>
-            AutoCraftCoordinator.CraftActionPrefix(__instance, __args);
+        private static bool CraftActionPrefix(object __instance, object[] __args)
+        {
+            if (!Ready) return true;
+            try { return AutoCraftCoordinator.CraftActionPrefix(__instance, __args); }
+            catch (Exception e)
+            {
+                FailClosed("crafting action", e);
+                return true; // never crash vanilla crafting because of our prefix
+            }
+        }
 
-        private static void CraftMenuClosePrefix(object __instance) =>
-            AutoCraftCoordinator.CraftingMenuClosing(__instance);
+        private static void CraftMenuClosePrefix(object __instance)
+        {
+            if (!Ready) return;
+            try { AutoCraftCoordinator.CraftingMenuClosing(__instance); }
+            catch (Exception e) { FailClosed("crafting menu close", e); }
+        }
+
+        private static void FailClosed(string stage, Exception e)
+        {
+            // A reflection/engine error must never escape a Harmony hook or
+            // leave the queue running on subsequent Player.Update frames.
+            enabled = false;
+            Once("CFC_RUNTIME_DISABLED (" + stage + "): " +
+                (e.InnerException ?? e));
+            try { AutoCraftCoordinator.Reset(); } catch { }
+            try { AutoBuildCoordinator.Reset(); } catch { }
+            try { RecipePrefetch.Reset(); } catch { }
+            UiAvailableCache.Clear();
+            lastSentItemId = null;
+            // Do not clear PendingItemIds. A packet may still be in flight:
+            // clearing would allow a second request against stale storage.
+        }
 
         private static void CraftAvailablePostfix(object[] __args, ref bool __result)
         {
@@ -286,6 +314,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
         private static void PlayerUpdate()
         {
             if (!Ready || !ContainerConfig.Enabled) return;
+            try
+            {
             var unityTimeType = Reflect.Type("UnityEngine.Time");
             var currentFrame = Convert.ToInt32(Get(unityTimeType, "frameCount") ?? 0);
             if (lastPruneFrame < 0 || currentFrame < lastPruneFrame ||
@@ -304,7 +334,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 RecipePrefetch.Cancel("Multiplayer disconnected; requests cancelled", Info);
                 // An item ID may be requested again only in a new session.
                 PendingItemIds.Clear();
-                    UiAvailableCache.Clear();
+                UiAvailableCache.Clear();
                 uiCacheFrame = -1;
                 lastSentItemId = null;
                 return;
@@ -340,6 +370,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
                     Trace.Info("CFC: last vanilla inventory query was " + lastRequestedTechType);
             }
             catch (Exception e) { Once("CFC_HOTKEY: " + e.Message); }
+            }
+            catch (Exception e) { FailClosed("Player.Update", e); }
         }
 
         /// <summary>
