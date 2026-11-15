@@ -203,9 +203,19 @@ public static class Program
         Eq(Builder.placeDefaultDistance,4f,"Extended build default distance");
         Eq(Builder.placeMaxDistance,6f,"Extended build max distance");
         Eq(constructable.placeMaxDistance,6f,"Constructable max distance updated");
+        Assert(Harmony.GetAllPatchedMethods().Any(m => m.DeclaringType == typeof(Targeting) &&
+            m.Name == "GetTarget"), "Real Targeting.GetTarget extension hook installed");
+        GameObject target;
+        float distance;
+        Targeting.GetTarget(2f, out target, out distance);
+        Eq(Targeting.LastMaxDistance,4f,"Targeting raycast extended while building");
         Builder.End();
         Eq(Builder.placeMaxDistance,3f,"Builder range restored on End");
         Eq(constructable.placeMaxDistance,3f,"Constructable range restored on End");
+        Builder.ghostModel = null;
+        Targeting.GetTarget(2f, out target, out distance);
+        Eq(Targeting.LastMaxDistance,2f,"Normal non-building target distance unchanged");
+        Builder.ghostModel = new GameObject();
 
         Time.frameCount++;
         Input.Down.Add(KeyCode.KeypadDivide);
