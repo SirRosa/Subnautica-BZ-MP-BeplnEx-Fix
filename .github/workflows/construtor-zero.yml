@@ -40,7 +40,7 @@ jobs:
           if ($unsafe.Invoke($null, $null)) { throw "Unsafe placement must be disabled by default" }
           Write-Host "Build contract, grid math and multiplayer safety gates: PASS"
       - name: Run simulated multiplayer Builder Harmony integration checks
-        run: dotnet run --project src/IntegrationHarness/IntegrationHarness.csproj -c Release --no-restore --nologo
+        run: dotnet run --project src/IntegrationHarness/IntegrationHarness.csproj -c Release --nologo
       - name: Create distribution without BepInEx, Nautilus or API stubs
         shell: pwsh
         run: |
