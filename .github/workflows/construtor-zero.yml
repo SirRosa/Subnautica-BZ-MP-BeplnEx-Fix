@@ -93,6 +93,8 @@ jobs:
           - Hold last ground/wall position visually (invalid for building) if ray is lost
           - Always verify floor-only furniture's actual floor, EVEN when the
             vanilla camera ray already returns success while looking down
+          - Probe floor through nearby furniture via RaycastAll; never anchor
+            a floor-only Locker to the horizontal TOP of another locker
           - Prefer structural walls behind existing lockers using Physics.RaycastAll
           - Preserve secondary attachment to furniture only when Builder flags allow it
           - Snap wall furniture to a fixed world-space grid instead of moving
