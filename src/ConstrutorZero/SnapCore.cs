@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using Subnautica.API.Enums;
 using Subnautica.API.Features;
 
@@ -178,8 +179,15 @@ namespace Sirro.BZ.MP.ConstrutorZero
         {
             if (__args == null || __args.Length < 3 || __args[0] == null || __args[1] == null)
                 return;
+            object originalPosition = null, originalRotation = null;
             try
             {
+                // Reflection mutates boxed Vector3 by reference. Preserve true
+                // value-type copies so any mid-hook exception rolls back both
+                // geometry arguments before the multiplayer reads the pose.
+                originalPosition = RuntimeHelpers.GetObjectValue(__args[1]);
+                originalRotation = __args[2] == null ? null :
+                    RuntimeHelpers.GetObjectValue(__args[2]);
                 if (!firstInvocationLogged)
                 {
                     firstInvocationLogged = true;
@@ -243,6 +251,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
             }
             catch (Exception ex)
             {
+                if (originalPosition != null) __args[1] = originalPosition;
+                if (originalRotation != null) __args[2] = originalRotation;
                 if (!alreadyWarned)
                 {
                     alreadyWarned = true;
