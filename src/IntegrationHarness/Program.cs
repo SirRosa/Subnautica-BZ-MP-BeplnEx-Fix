@@ -624,6 +624,22 @@ public static class Program
             "Wall ghost is not incorrectly rotated by floor snap");
         Eq(wallPosition.x,0f,"Wall clipping plane depth is not quantized");
         Eq(wallPosition.y,1.5f,"Wall tangent Y snaps to grid");
+        var angledNormal = new Vector3(.6f,.1f,.8f);
+        var angled1 = SnapMath.WorldWallPosition(
+            2.13f,1.22f,4.57f,
+            angledNormal.x,angledNormal.y,angledNormal.z,.5f);
+        var angled2 = SnapMath.WorldWallPosition(
+            2.13f + angledNormal.x*.31f,1.22f,
+            4.57f + angledNormal.z*.31f,
+            angledNormal.x,angledNormal.y,angledNormal.z,.5f);
+        var along1 = -.8f*angled1[0]+.6f*angled1[2];
+        var along2 = -.8f*angled2[0]+.6f*angled2[2];
+        Eq(along1,along2,
+            "Angled wall tangent grid stays fixed when moving along wall normal");
+        var depth1 = .6f*angled1[0]+.1f*angled1[1]+.8f*angled1[2];
+        var depth2 = .6f*angled2[0]+.1f*angled2[1]+.8f*angled2[2];
+        Eq(depth2-depth1,.31f,
+            "Angled wall snap preserves intended normal depth without clipping");
         var ceilingHit = new RaycastHit {
             normal = new Vector3(0,-1f,0), transform = null
         };
