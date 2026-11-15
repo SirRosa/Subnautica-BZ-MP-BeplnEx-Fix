@@ -56,6 +56,31 @@ public static class AbiTests
             allowed.GetParameters()[0].ParameterType == typeof(string).MakeByRefType(),
             "Constructable.DeconstructionAllowed(ref string) matches BZ");
 
+        var prefab = typeof(Builder).GetField("prefab", All);
+        assert(prefab != null && prefab.IsStatic &&
+            prefab.FieldType == typeof(GameObject),
+            "Real BZ Builder.prefab is a static GameObject FIELD");
+
+        var uiAvailable = typeof(uGUI_CraftingMenu)
+            .GetMethod("ActionAvailable", All);
+        assert(uiAvailable != null && uiAvailable.ReturnType == typeof(bool) &&
+            uiAvailable.GetParameters().Length == 1 &&
+            uiAvailable.GetParameters()[0].ParameterType ==
+                typeof(uGUI_CraftingMenu.Node),
+            "Real BZ uGUI_CraftingMenu.ActionAvailable(Node) returns bool");
+        var uiDeselect = typeof(uGUI_CraftingMenu)
+            .GetMethod("OnDeselect", All);
+        assert(uiDeselect != null && uiDeselect.GetParameters().Length == 0 &&
+            uiDeselect.ReturnType == typeof(void),
+            "Real BZ uGUI_CraftingMenu.OnDeselect() is callable");
+
+        var fulfilled = typeof(CrafterLogic)
+            .GetMethod("IsCraftRecipeFulfilled", All);
+        assert(fulfilled != null && fulfilled.IsStatic &&
+            fulfilled.ReturnType == typeof(bool) &&
+            fulfilled.GetParameters().Length == 1,
+            "Real BZ CrafterLogic.IsCraftRecipeFulfilled(TechType) exists");
+
         var eventMethod = typeof(Subnautica.Events.Handlers.Storage)
             .GetMethod("OnItemRemoving", All);
         assert(eventMethod != null && eventMethod.IsStatic &&
