@@ -35,6 +35,13 @@ namespace Sirro.BZ.MP.ConstrutorZero
         // authoritative server is processing the previous request.
         private static readonly Dictionary<string, DateTime> PendingItemIds =
             new Dictionary<string, DateTime>(StringComparer.Ordinal);
+        private static readonly HashSet<string> AcknowledgedItemIds =
+            new HashSet<string>(StringComparer.Ordinal);
+        // UI affordability is advisory only. It must never inflate inventory
+        // counts or bypass vanilla resource consumption.
+        private static readonly Dictionary<object, int> UiAvailableCache =
+            new Dictionary<object, int>();
+        private static int uiCacheFrame = -1;
         private static object harmony;
         private static MethodInfo unpatch;
         private static MethodInfo patch;
@@ -47,7 +54,12 @@ namespace Sirro.BZ.MP.ConstrutorZero
         internal static object Read(object instance, string name) => Get(instance, name);
         internal static void AcknowledgeTransfer(string itemId)
         {
-            if (itemId != null) PendingItemIds.Remove(itemId);
+            // Do NOT release the same ID immediately on ACK: the local
+            // locker representation can remain stale until a later server
+            // packet updates it, and would otherwise be requested twice.
+            if (itemId != null && PendingItemIds.ContainsKey(itemId))
+                AcknowledgedItemIds.Add(itemId);
+            UiAvailableCache.Clear();
         }
         private static int lastTransferFrame = -1;
         private static int lastPruneFrame = -1;
@@ -82,6 +94,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 Hook("Inventory", "OnAddItem", null, nameof(InventoryAdded));
                 Hook("uGUI_RecipeEntry", "UpdateIngredients", null, nameof(RecipeObserved));
                 Hook("uGUI_CraftingMenu", "Action", nameof(CraftActionPrefix), null);
+                Hook("uGUI_CraftingMenu", "ActionAvailable", null,
+                    nameof(CraftAvailablePostfix));
                 Hook("uGUI_CraftingMenu", "Close", nameof(CraftMenuClosePrefix), null);
                 Hook("Player", "Update", null, nameof(PlayerUpdate));
                 // Required hooks are the transaction safety boundary:
@@ -91,6 +105,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
                     "StorageContainer.Awake",
                     "Inventory.OnAddItem",
                     "uGUI_CraftingMenu.Action",
+                    "uGUI_CraftingMenu.ActionAvailable",
                     "uGUI_CraftingMenu.Close",
                     "Player.Update"
                 })
@@ -156,6 +171,9 @@ namespace Sirro.BZ.MP.ConstrutorZero
             RecipePrefetch.Reset();
             Storage.Clear();
             PendingItemIds.Clear();
+            AcknowledgedItemIds.Clear();
+            UiAvailableCache.Clear();
+            uiCacheFrame = -1;
             lastSentItemId = null;
             lastRequestedTechType = null;
             lastPruneFrame = -1;
@@ -170,7 +188,12 @@ namespace Sirro.BZ.MP.ConstrutorZero
             {
                 var root = Get(__instance, "storageRoot") ?? Get(__instance, "transform");
                 var contents = Get(__instance, "container");
-                if (root != null && contents != null) Storage[root] = contents;
+                if (root != null)
+                {
+                    if (contents == null) Storage.Remove(root);
+                    else Storage[root] = contents;
+                    UiAvailableCache.Clear();
+                }
             }
             catch (Exception e) { Once("CFC_REGISTER: " + e.Message); }
         }
@@ -219,6 +242,16 @@ namespace Sirro.BZ.MP.ConstrutorZero
 
         private static void CraftMenuClosePrefix(object __instance) =>
             AutoCraftCoordinator.CraftingMenuClosing(__instance);
+
+        private static void CraftAvailablePostfix(object[] __args, ref bool __result)
+        {
+            if (__result || !Ready || !ContainerConfig.AutoCraftEnabled ||
+                __args == null || __args.Length != 1) return;
+            // Only the fabricator UI's availability may be extended. The
+            // original CrafterLogic / Inventory APIs remain untouched and
+            // consume REAL items only after explicit server delivery.
+            __result = AutoCraftCoordinator.CanAdvertise(__args[0]);
+        }
 
         private static void RecipeObserved(object __instance)
         {
@@ -272,6 +305,9 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 RecipePrefetch.Cancel("Multiplayer disconnected; requests cancelled", Info);
                 // An item ID may be requested again only in a new session.
                 PendingItemIds.Clear();
+                AcknowledgedItemIds.Clear();
+                UiAvailableCache.Clear();
+                uiCacheFrame = -1;
                 lastSentItemId = null;
                 return;
             }
@@ -389,6 +425,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
                             return false;
                         }
                         PendingItemIds[itemId] = now;
+                        UiAvailableCache.Clear();
                         lastSentItemId = itemId;
                         Trace.Info("CFC_SERVER_TRANSFER_REQUEST: " + wantedTechType +
                             ", item=" + itemId + ", locker=" + containerId);
@@ -398,6 +435,79 @@ namespace Sirro.BZ.MP.ConstrutorZero
             }
             catch (Exception e) { Once("CFC_TRANSFER_FAILED: " + (e.InnerException ?? e).Message); }
             return false;
+        }
+
+        /// <summary>
+        /// UI-only advisory count. Never modifies vanilla inventory totals or
+        /// grants crafting success, and counts distinct, unrequested server IDs.
+        /// The server must still validate every later actual transfer.
+        /// </summary>
+        internal static int CountAvailable(object wantedTechType)
+        {
+            if (!Ready || !ContainerConfig.Enabled || !IsNetworkActive() ||
+                wantedTechType == null) return 0;
+            try
+            {
+                var frame = Convert.ToInt32(Get(Reflect.Type("UnityEngine.Time"),
+                    "frameCount") ?? -1);
+                if (frame != uiCacheFrame)
+                {
+                    uiCacheFrame = frame;
+                    UiAvailableCache.Clear();
+                }
+                if (UiAvailableCache.TryGetValue(wantedTechType, out var cached))
+                    return cached;
+
+                PruneDeadStorages();
+                var player = Reflect.Type("Player");
+                var origin = Get(Get(player, "main"), "transform");
+                var position = Get(origin, "position");
+                var network = typeof(Subnautica.API.Features.SubnauticaPlugin).Assembly
+                    .GetType("Subnautica.API.Features.Network");
+                var identifier = Get(network, "Identifier");
+                if (position == null || identifier == null) return 0;
+
+                var found = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var kv in Storage.ToArray())
+                {
+                    var root = kv.Key;
+                    var container = kv.Value;
+                    if (root == null || container == null ||
+                        Distance(position, Get(Get(root, "transform") ?? root, "position")) >
+                            ContainerConfig.RangeMeters) continue;
+
+                    var gameObject = Get(root, "gameObject");
+                    var constructable = Component(gameObject, "Constructable", true);
+                    if (constructable == null) continue;
+                    var techType = Get(constructable, "techType");
+                    var name = techType?.ToString() ?? "";
+                    if ((name != "Locker" && name != "SmallLocker") ||
+                        !ContainerConfig.IsAllowed(name) ||
+                        string.IsNullOrWhiteSpace(GetIdentity(identifier,
+                            Get(constructable, "gameObject")))) continue;
+
+                    foreach (var item in container as IEnumerable ?? new object[0])
+                    {
+                        var pickup = Get(item, "item");
+                        if (pickup == null ||
+                            !Equals(GetTechType(pickup), wantedTechType)) continue;
+                        var id = GetIdentity(identifier, Get(pickup, "gameObject"));
+                        if (!string.IsNullOrWhiteSpace(id) &&
+                            !PendingItemIds.ContainsKey(id))
+                            found.Add(id);
+                        if (found.Count >= 80) break;
+                    }
+                    if (found.Count >= 80) break;
+                }
+                UiAvailableCache[wantedTechType] = found.Count;
+                return found.Count;
+            }
+            catch (Exception e)
+            {
+                Once("CFC_UI_AVAILABILITY_FAILED: " +
+                    (e.InnerException ?? e).Message);
+                return 0;
+            }
         }
 
         private static object GetTechType(object pickupable)
