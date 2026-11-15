@@ -22,6 +22,10 @@ jobs:
           Add-Type -Path "$out/Sirro.BZ.MP.ConstrutorZero.dll"
           $plugin = [Sirro.BZ.MP.ConstrutorZero.MainPlugin]::new()
           if ($plugin.PluginType.ToString() -ne "Client") { throw "Wrong plugin type" }
+          $refs = $plugin.GetType().Assembly.GetReferencedAssemblies() | ForEach-Object { $_.Name }
+          if ($refs | Where-Object { $_ -match "^(BepInEx|Nautilus|Subnautica.Client|Subnautica.Server)$" }) {
+            throw "Forbidden dependency found in native DLL"
+          }
           if ($plugin.Name -notlike "*Construtor Zero*") { throw "Wrong plugin name" }
           $math = [Sirro.BZ.MP.ConstrutorZero.SnapMath]
           if ([Math]::Abs($math::PlaneAxis(1.37, 0, 0.5) - 1.5) -gt 0.00001) { throw "Grid snapping regression" }
