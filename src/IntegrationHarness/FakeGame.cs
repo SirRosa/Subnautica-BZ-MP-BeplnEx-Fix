@@ -42,9 +42,13 @@ namespace UnityEngine
     {
         public GameObject gameObject = new GameObject();
         public Vector3 position;
-        public Vector3 InverseTransformPoint(Vector3 p) => p;
+        // Match Unity's translation part of Transform, rather than the old
+        // fake identity transform that hid incorrect local/world snapping.
+        public Vector3 InverseTransformPoint(Vector3 p) =>
+            new Vector3(p.x-position.x, p.y-position.y, p.z-position.z);
         public Vector3 InverseTransformDirection(Vector3 p) => p;
-        public Vector3 TransformPoint(Vector3 p) => p;
+        public Vector3 TransformPoint(Vector3 p) =>
+            new Vector3(p.x+position.x, p.y+position.y, p.z+position.z);
     }
     public struct RaycastHit
     {
@@ -238,7 +242,9 @@ public static class Builder
     public static int PlacementCalls = 0;
     public static bool isPlacing => ghostModel != null;
     public static TechType constructableTechType = TechType.None;
-    public static UnityEngine.GameObject prefab { get; set; }
+    // Supplied real BZ Assembly-CSharp.dll defines this as a static FIELD.
+    // The previous fake's auto-property gave a misleading ABI signal.
+    public static UnityEngine.GameObject prefab;
     public static UnityEngine.GameObject ghostModel { get; set; }
     public static bool rotationEnabled = true;
     public static float placeDefaultDistance = 2f;
