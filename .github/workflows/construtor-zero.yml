@@ -47,7 +47,7 @@ jobs:
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item "src/ConstrutorZero/bin/Release/net472/Sirro.BZ.MP.ConstrutorZero.dll" dist/
           @"
-          Construtor Zero 0.1-alpha -- EXPERIMENTAL
+          Construtor Zero development build -- NOT READY FOR PLAY
           Multiplayer BOT Benson 3.0.1 -- client plugin
 
           1. BACK UP YOUR SAVE.
@@ -56,13 +56,13 @@ jobs:
           4. Launch multiplayer, check Game/Logs for [ConstrutorZero].
           5. Test with two players on a disposable save. Verify placement, rejoin, host restart.
 
-          LIMITATIONS: this is a first combined alpha. Not a full parity port of
+          LIMITATIONS: experimental CraftFromContainers groundwork only. NOT a full parity port of
           SnapBuilder and Building Tweaks. Dynamic parent attachment and
           unsafe override/deconstruction remain gated to prevent desync.
-          DO NOT use on a production save. Game runtime behavior not CI-tested.
+          CraftFromContainers cannot automatically craft/build from lockers yet; server transfer is async.\n          DO NOT install or use on a production save. Game runtime behavior not CI-tested.
           "@ | Set-Content "dist/README-EXPERIMENTAL.txt"
-          Compress-Archive -Path "dist/Sirro.BZ.MP.ConstrutorZero.dll", "dist/README-EXPERIMENTAL.txt" -DestinationPath "dist/Construtor-Zero-0.1-alpha.zip" -Force
+          Compress-Archive -Path "dist/Sirro.BZ.MP.ConstrutorZero.dll", "dist/README-EXPERIMENTAL.txt" -DestinationPath "dist/Construtor-Zero-development-CFC.zip" -Force
       - uses: actions/upload-artifact@v4
         with:
-          name: Construtor-Zero-0.1-alpha
-          path: dist/Construtor-Zero-0.1-alpha.zip
+          name: Construtor-Zero-development-CFC
+          path: dist/Construtor-Zero-development-CFC.zip
