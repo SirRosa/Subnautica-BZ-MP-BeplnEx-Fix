@@ -1174,8 +1174,12 @@ public static class Program
         Builder.constructableTechType = TechType.TestRecipe;
         Builder.CanPlace = true;
         Builder.ghostModel = new GameObject();
-        Assert(!Builder.TryPlace() && (bool)buildWaiting.GetValue(null),
-            "Deferred building staged before disconnect");
+        var blueprintPacketsBeforeDisconnect =
+            FakeMultiplayerConstruction.PacketsSent;
+        Assert(!Builder.TryPlace() && !(bool)buildWaiting.GetValue(null) &&
+            FakeMultiplayerConstruction.PacketsSent == blueprintPacketsBeforeDisconnect + 1 &&
+            (bool)active.GetValue(null),
+            "Blueprint sends once immediately and independent resource prefetch starts before disconnect");
         Subnautica.API.Features.Network.IsMultiplayerActive = false;
         Time.frameCount++;
         Player.main.Update();
