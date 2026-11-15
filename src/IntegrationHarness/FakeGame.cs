@@ -95,13 +95,50 @@ namespace UnityEngine
     {
         public static bool GroundAvailable = true;
         public static bool WallAvailable;
+        public static bool FurnitureAvailable;
         public static float FloorHeight = 1.25f;
+        public static int WallAllRaycasts;
+        public static float WallHitTransformOffset;
         public static readonly Collider WorldFloor = new Collider();
         public static readonly Collider WorldWall = new Collider {
             gameObject = new GameObject { name = "world-wall" }
         };
+        public static readonly Collider WorldFurniture = new Collider {
+            gameObject = new GameObject { name = "world-locker-in-front" }
+        };
         public static int FloorRaycasts;
         public static int WallRaycasts;
+        public static RaycastHit[] RaycastAll(Vector3 origin, Vector3 direction,
+            float maxDistance, int mask, QueryTriggerInteraction query)
+        {
+            WallAllRaycasts++;
+            var hits = new List<RaycastHit>();
+            if (FurnitureAvailable && direction.z > 0.01f)
+            {
+                hits.Add(new RaycastHit {
+                    point = new Vector3(origin.x, origin.y, origin.z + .65f),
+                    normal = new Vector3(0,0,-1),
+                    collider = WorldFurniture,
+                    transform = new Transform {
+                        position = new Vector3(WallHitTransformOffset + 7f, 0f, 0f) }
+                });
+            }
+            if (WallAvailable && direction.z > .01f)
+            {
+                float distance = (2.5f - origin.z)/direction.z;
+                if (distance >= 0 && distance <= maxDistance)
+                    hits.Add(new RaycastHit {
+                        point = new Vector3(origin.x + distance*direction.x,
+                            origin.y, 2.5f),
+                        normal = new Vector3(0,0,-1),
+                        collider = WorldWall,
+                        transform = new Transform {
+                            position = new Vector3(WallHitTransformOffset, 0f, 0f) }
+                    });
+            }
+            return hits.ToArray();
+        }
+
         public static bool Raycast(Vector3 origin, Vector3 direction,
             out RaycastHit hit, float maxDistance, int mask,
             QueryTriggerInteraction query)
@@ -494,6 +531,7 @@ public static class Builder
     public static UnityEngine.LayerMask placeLayerMask = new UnityEngine.LayerMask();
     public static UnityEngine.GameObject placementTarget;
     public static bool SimulateSurfaceValidation;
+    public static bool SimulateVanillaCameraHit;
     public static UnityEngine.Collider LastSubmoduleCollider;
     public static UnityEngine.Vector3 placePosition;
     public static UnityEngine.Quaternion placeRotation;
@@ -526,6 +564,16 @@ public static class Builder
     private static bool CheckAsSubModule(out UnityEngine.Collider hitCollider)
     {
         hitCollider = null;
+        if (SimulateVanillaCameraHit &&
+            MainCamera.camera.transform.forward.y < -.7f &&
+            UnityEngine.Physics.GroundAvailable)
+        {
+            // Simulate the BZ vanilla code accepting a pitched camera ray
+            // with a stale floating ghost position before our patch.
+            placePosition = new UnityEngine.Vector3(0f, 5.7f, 2f);
+            hitCollider = UnityEngine.Physics.WorldFloor;
+            return true;
+        }
         return false;
     }
     [MethodImpl(MethodImplOptions.NoInlining)]
