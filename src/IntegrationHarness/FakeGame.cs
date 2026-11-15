@@ -40,6 +40,7 @@ namespace UnityEngine
     }
     public class Transform
     {
+        public GameObject gameObject = new GameObject();
         public Vector3 position;
         public Vector3 InverseTransformPoint(Vector3 p) => p;
         public Vector3 InverseTransformDirection(Vector3 p) => p;
@@ -101,6 +102,8 @@ public class ConstructableBase
 }
 public class Constructable
 {
+    public TechType techType = TechType.Locker;
+    public UnityEngine.GameObject gameObject = new UnityEngine.GameObject();
     public float placeDefaultDistance = 2f;
     public float placeMaxDistance = 3f;
     [MethodImpl(MethodImplOptions.NoInlining)]
