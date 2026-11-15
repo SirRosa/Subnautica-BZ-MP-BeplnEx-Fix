@@ -78,7 +78,7 @@ public class StorageContainer
     [MethodImpl(MethodImplOptions.NoInlining)]
     public void Awake() { }
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public void OnDestroy() { }
+    public void ResetContainer() { }
 }
 public class Inventory
 {
@@ -86,7 +86,7 @@ public class Inventory
     [MethodImpl(MethodImplOptions.NoInlining)]
     public int GetPickupCount(TechType type) => 0;
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public bool DestroyItem(TechType destroyTechType) => false;
+    public bool DestroyItem(TechType destroyTechType, bool skipEquipment = false) => false;
 }
 public class Player
 {
@@ -98,7 +98,7 @@ public class Player
 public class ConstructableBase
 {
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public bool DeconstructionAllowed() => false;
+    public bool DeconstructionAllowed(ref string reason) => false;
 }
 public class Constructable
 {
@@ -152,20 +152,26 @@ public static class Builder
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static void End() {}
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void CreateGhost() {}
+    public static bool CreateGhost() => true;
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static bool UpdateAllowed() => false;
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static bool ValidateOutdoor() => false;
+    public static bool ValidateOutdoor(UnityEngine.GameObject go) => false;
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void GetObstacles(ref List<UnityEngine.GameObject> results) {}
+    public static void GetObstacles(UnityEngine.Vector3 position, UnityEngine.Quaternion rotation,
+        List<object> bounds, Func<object,bool> predicate, List<UnityEngine.GameObject> results) {}
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static void CheckSpace(UnityEngine.Vector3 position, UnityEngine.Quaternion rot,
         List<object> bounds, int mask, object ignore, ref List<UnityEngine.GameObject> obstacles) {}
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static bool TryPlace() => true;
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static bool SetDefaultPlaceTransform() => true;
+    public static void SetDefaultPlaceTransform(ref UnityEngine.Vector3 pos,
+        ref UnityEngine.Quaternion rotation)
+    {
+        pos = new UnityEngine.Vector3(0, 0, 0);
+        rotation = UnityEngine.Quaternion.Euler(new UnityEngine.Vector3(0, 0, 0));
+    }
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static bool CanDestroyObject(UnityEngine.GameObject go) => true;
 }
