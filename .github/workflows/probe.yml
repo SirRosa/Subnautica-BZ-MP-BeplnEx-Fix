@@ -1,0 +1,39 @@
+name: Native plugin probe
+on:
+  push:
+    branches: [test/native-port-loader-301]
+  workflow_dispatch:
+
+jobs:
+  compile-and-smoke-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Compile against minimal API contract
+        run: dotnet build src/PortProbe/PortProbe.csproj -c Release --nologo
+      - name: Verify probe entry point and lifecycle (contract smoke test)
+        shell: pwsh
+        run: |
+          $out = "src/PortProbe/bin/Release/net472"
+          Add-Type -Path "$out/Subnautica.API.dll"
+          Add-Type -Path "$out/Subnautica.BZ.MP.PortProbe.dll"
+          $plugin = [Sirro.BelowZero.Multiplayer.PortProbe.MainPlugin]::new()
+          if ($plugin.PluginType.ToString() -ne "Client") { throw "Wrong plugin type" }
+          $plugin.OnEnabled()
+          $marker = Join-Path ([System.IO.Path]::GetTempPath()) "Sirro-BZ-MP-PortProbe.txt"
+          if (!(Test-Path $marker)) { throw "OnEnabled did not execute" }
+          if (!((Get-Content $marker -Raw).Contains("enabled"))) { throw "Unexpected marker" }
+          $plugin.OnDisabled()
+      - name: Pack DLL only (never pack compile-time contract)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item "src/PortProbe/bin/Release/net472/Subnautica.BZ.MP.PortProbe.dll" dist/
+          Compress-Archive -Path "dist/Subnautica.BZ.MP.PortProbe.dll" -DestinationPath "dist/MP-PortProbe-301.zip" -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MP-PortProbe-301
+          path: dist/MP-PortProbe-301.zip
