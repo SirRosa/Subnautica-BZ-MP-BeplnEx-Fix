@@ -136,6 +136,7 @@ namespace Sirro.BZ.MP.NativeSnapBuilder
         private static bool alreadyWarned;
         private static Type input, keyCode;
         private static MethodInfo getKeyDown, getKey;
+        private static int lastToggleFrame = -1;
 
         // Harmony __args supplies the actual method parameters; index 1 is the by-ref Vector3.
         public static void Postfix(object[] __args)
@@ -146,8 +147,18 @@ namespace Sirro.BZ.MP.NativeSnapBuilder
             {
                 if (Key("Mouse2", true))
                 {
-                    Options.Enabled = !Options.Enabled;
-                    Trace.Info("Snapping " + (Options.Enabled ? "ON" : "OFF"));
+                    // A builder may call placement several times in the same Unity frame.
+                    // Toggle at most once per frame to avoid flipping back immediately.
+                    var unityTime = Reflect.Type("UnityEngine.Time");
+                    var frameProperty = unityTime?.GetProperty("frameCount",
+                        BindingFlags.Public | BindingFlags.Static);
+                    int frame = frameProperty != null ? (int)frameProperty.GetValue(null, null) : 0;
+                    if (frame != lastToggleFrame)
+                    {
+                        lastToggleFrame = frame;
+                        Options.Enabled = !Options.Enabled;
+                        Trace.Info("Snapping " + (Options.Enabled ? "ON" : "OFF"));
+                    }
                 }
                 if (!Options.Enabled || IsWholeBasePiece()) return;
                 var hit = __args[0];
