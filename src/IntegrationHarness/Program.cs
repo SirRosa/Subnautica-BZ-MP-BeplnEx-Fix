@@ -35,7 +35,7 @@ public static class Program
         Assert(patches.Any(m => m.Name == "SetPlaceOnSurface"), "Harmony Snap hook installed");
         Assert(patches.Any(m => m.Name == "Update"), "Harmony Builder Update hook installed");
         Assert(patches.Any(m => m.Name == "UpdateAllowed"), "Harmony validation hook installed");
-        Assert(patches.Any(m => m.Name == "GetObstacles"), "Harmony obstacle by-ref hook installed");
+        Assert(patches.Any(m => m.Name == "GetObstacles"), "Harmony obstacle List<GameObject> hook installed");
         Assert(patches.Any(m => m.Name == "IsPowered"), "Harmony power hook installed");
         Assert(patches.Any(m => m.DeclaringType == typeof(StorageContainer)),
             "CraftFromContainers storage registration hooks installed");
@@ -87,10 +87,11 @@ public static class Program
             "Server transfer does not silently delete local items before ack");
         Assert(Inventory.main.GetPickupCount(TechType.Titanium) == 0,
             "Craft ingredients are NOT forged without server approval");
-        Assert(!Inventory.main.DestroyItem(TechType.Titanium),
+        Assert(!Inventory.main.DestroyItem(TechType.Titanium, false),
             "Craft resource removal is NOT forged on client");
-        locker.OnDestroy();
-        Assert((int)storages.GetValue(null) == 0, "Storage registry cleaned on Destroy");
+        locker.ResetContainer();
+        Assert((int)storages.GetValue(null) == 1,
+            "Registry refreshed on actual StorageContainer.ResetContainer");
 
         var hit = new RaycastHit { normal = new Vector3(0,1,0), transform = new Transform() };
         var pos = new Vector3(1.37f, 0f, 2.74f);
@@ -121,11 +122,14 @@ public static class Program
             BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
         unsafeField.SetValue(null, true);
         Assert(!Builder.UpdateAllowed(),"Unsafe Full Override blocked even when configured true");
-        Assert(!Builder.ValidateOutdoor(),"Unsafe outdoor override blocked");
+        Assert(!Builder.ValidateOutdoor(new GameObject()),"Unsafe outdoor override blocked");
         unsafeField.SetValue(null, false);
-        Assert(!constructable.DeconstructionAllowed(),"Unsafe deconstruction blocked");
+        string deconstructReason = null;
+        Assert(!constructable.DeconstructionAllowed(ref deconstructReason),
+            "Unsafe deconstruction blocked with real ref string signature");
         var o = new List<GameObject> { new GameObject() };
-        Builder.GetObstacles(ref o);
+        Builder.GetObstacles(new Vector3(0,0,0), Quaternion.Euler(new Vector3(0,0,0)),
+            new List<object>(), item => true, o);
         Assert(o.Count == 1, "Obstacles preserved in safe mode");
 
         Time.frameCount++;
@@ -144,19 +148,25 @@ public static class Program
         Builder.placePosition = new Vector3(1,2,3);
         Builder.Update();
         Input.Clear();
-        Assert(!Builder.SetDefaultPlaceTransform(),"Freeze disables default placement");
+        var ghostPosition = new Vector3(-99, -99, -99);
+        var ghostRotation = Quaternion.Euler(new Vector3(0, 30, 0));
+        Builder.SetDefaultPlaceTransform(ref ghostPosition, ref ghostRotation);
+        Eq(ghostPosition.x, 1f, "Real ref Vector3 placement is frozen");
         Input.Held.Add(KeyCode.Keypad4);
         Time.frameCount++;
         Builder.Update();
         Assert(Builder.placePosition.x < 1,"Free placement moves ghost");
         Input.Clear();
         Builder.End();
-        Assert(Builder.SetDefaultPlaceTransform(),"Free placement released after End");
+        ghostPosition = new Vector3(-99, -99, -99);
+        Builder.SetDefaultPlaceTransform(ref ghostPosition, ref ghostRotation);
+        Eq(ghostPosition.x, 0f, "Default placement ref args restored after End");
 
         Assert((new PowerConsumer{powerRelay = new FakePowerRelay()}).IsPowered(),
             "Detached power relay fallback");
 
         plugin.OnDisabled();
+        Assert((int)storages.GetValue(null) == 0, "Storage registry cleaned on plugin shutdown");
         foreach (var method in Harmony.GetAllPatchedMethods().Where(m => m.DeclaringType == typeof(Builder)))
         {
             var patchInfo = Harmony.GetPatchInfo(method);
