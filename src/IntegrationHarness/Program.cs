@@ -224,6 +224,13 @@ public static class Program
         Assert(!(bool)waitingForLock.GetValue(null),
             "Locked blueprint cannot start deferred crafting");
         CrafterLogic.IsUnlocked = true;
+        GameModeManager.CraftingRequiresResources = false;
+        int packetsBeforeCreative = Subnautica.Events.Handlers.Storage.NetworkRequests;
+        gui.Action(craftNode);
+        Assert(!(bool)waitingForLock.GetValue(null) &&
+            Subnautica.Events.Handlers.Storage.NetworkRequests == packetsBeforeCreative,
+            "Creative mode does not transfer any container ingredients");
+        GameModeManager.CraftingRequiresResources = true;
         gui.CraftActionCalls = 0; // fake vanilla action has no blueprint validation
         gui.Action(craftNode);
         Assert(gui.CraftActionCalls == 0,
@@ -371,6 +378,14 @@ public static class Program
             Subnautica.Events.Handlers.Storage.NetworkRequests == beforeInvalid,
             "No container transfers or deferred construction for invalid placement");
         Builder.CanPlace = true;
+        GameModeManager.CraftingRequiresResources = false;
+        int beforeCreativeBuilding = Subnautica.Events.Handlers.Storage.NetworkRequests;
+        Assert((bool)buildPrefix.Invoke(null, new object[] { false }),
+            "Creative mode building follows the original no-cost placement path");
+        Assert(!(bool)buildWaiting.GetValue(null) &&
+            Subnautica.Events.Handlers.Storage.NetworkRequests == beforeCreativeBuilding,
+            "Creative construction does not request locker ingredients");
+        GameModeManager.CraftingRequiresResources = true;
         autoBuildField.SetValue(null, false);
         autoPlaceField.SetValue(null, false);
         Builder.constructableTechType = TechType.None;
