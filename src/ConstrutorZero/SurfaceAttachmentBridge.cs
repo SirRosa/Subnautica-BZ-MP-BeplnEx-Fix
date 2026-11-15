@@ -37,7 +37,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
             warned = false;
         }
 
-        internal static void CheckAsSubModulePostfix(ref bool __result)
+        internal static void CheckAsSubModulePostfix(
+            ref bool __result, object[] __args)
         {
             if (!Options.GroundAlignEnabled) return;
             try
@@ -100,7 +101,16 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 Write(builder, "placementTarget", hitObject);
                 var valid = CheckPlacementSpace(builder, collider, args[1], args[2]);
                 __result = valid;
-                if (valid) Remember(builder, prefab);
+                if (valid)
+                {
+                    // Current BZ has CheckAsSubModule(out Collider). Its
+                    // caller uses the collider for subsequent obstacle
+                    // filtering. Returning success without this OUT value
+                    // could misvalidate the new ground/wall placement.
+                    if (__args != null && __args.Length > 0)
+                        __args[0] = collider;
+                    Remember(builder, prefab);
+                }
             }
             catch (Exception e)
             {
