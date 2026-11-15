@@ -28,6 +28,9 @@ jobs:
           if ([Math]::Abs($math::PlaneAxis(1.37, 1, 0.5) - 1.37) -gt 0.00001) { throw "Surface normal regression" }
           if ([Math]::Abs($math::PlaneAxis(-1.37, 0, 0.5) + 1.5) -gt 0.00001) { throw "Negative snapping regression" }
           if ([Math]::Abs($math::PlaneAxis(1.37, 0, 0.1) - 1.4) -gt 0.00001) { throw "Fine snapping regression" }
+          if ([Math]::Abs($math::RotationAngle(47.0, 45) - 45) -gt 0.00001) { throw "Default rotation regression" }
+          if ([Math]::Abs($math::RotationAngle(43.3, 5) - 45) -gt 0.00001) { throw "Fine rotation regression" }
+          if ([Math]::Abs($math::RotationAngle(-44.0, 45) + 45) -gt 0.00001) { throw "Negative rotation regression" }
           $building = $plugin.GetType().Assembly.GetType("Sirro.BZ.MP.ConstrutorZero.BuildingTweaksBridge", $true)
           $unsafe = $building.GetMethod("IsUnsafePlacementEnabled", [System.Reflection.BindingFlags]"Public, NonPublic, Static")
           if ($unsafe.Invoke($null, $null)) { throw "Unsafe placement must be disabled by default" }
