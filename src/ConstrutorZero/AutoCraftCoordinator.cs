@@ -50,6 +50,12 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 StringComparison.OrdinalIgnoreCase))
                 return true;
 
+            // Never queue ingredients for a blueprint that the game has not
+            // unlocked. The original Craft UI checks CrafterLogic permissions;
+            // our prefix runs first, so it must preserve that restriction.
+            if (!CraftingRecipeUnlocked(wanted))
+                return true;
+
             // When everything is already in the actual local inventory, vanilla
             // code should execute unchanged, with no new server requests.
             if (RecipePrefetch.InventoryHasCompleteRecipe(wanted))
@@ -69,6 +75,23 @@ namespace Sirro.BZ.MP.ConstrutorZero
             CraftFromContainersBridge.Report("Craft postponed until all ingredients " +
                 "arrive through the multiplayer server");
             return false;
+        }
+
+        private static bool CraftingRecipeUnlocked(object recipe)
+        {
+            try
+            {
+                var crafterLogic = Reflect.Type("CrafterLogic");
+                var check = crafterLogic?.GetMethods(All).FirstOrDefault(m =>
+                    m.Name == "IsCraftRecipeUnlocked" && m.IsStatic &&
+                    m.GetParameters().Length == 1 &&
+                    m.GetParameters()[0].ParameterType.IsInstanceOfType(recipe) &&
+                    m.ReturnType == typeof(bool));
+                // Fail closed for automation when runtime API does not match:
+                // vanilla still gets the original action without any CFC transfer.
+                return check != null && (bool)check.Invoke(null, new[] { recipe });
+            }
+            catch { return false; }
         }
 
         internal static void IngredientsDelivered()
