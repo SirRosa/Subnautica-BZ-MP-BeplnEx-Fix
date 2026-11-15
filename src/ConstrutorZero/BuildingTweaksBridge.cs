@@ -63,7 +63,6 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 Hook("Builder", "Update", null, nameof(UpdatePostfix));
                 Hook("Builder", "End", null, nameof(EndPostfix));
                 Hook("Builder", "CreateGhost", null, nameof(CreateGhostPostfix));
-                Hook("Builder", "SetDefaultPlaceTransform", null, nameof(DefaultPlacementPostfix));
                 Hook("Builder", "UpdateAllowed", nameof(UpdateAllowedPrefix), nameof(UpdateAllowedPostfix));
                 Hook("Builder", "ValidateOutdoor", null, nameof(AllowedPostfix));
                 Hook("Builder", "GetObstacles", null, nameof(GetObstaclesPostfix));
@@ -211,16 +210,6 @@ namespace Sirro.BZ.MP.ConstrutorZero
             frozen = false; freezeInitialized = false;
             attachToTarget = false; fullOverride = false;
             RestoreRanges();
-        }
-
-        private static void DefaultPlacementPostfix(object[] __args)
-        {
-            // Verified 3.0.1 game signature:
-            // void Builder.SetDefaultPlaceTransform(ref Vector3 position, ref Quaternion rotation)
-            // Do not skip the original; it initializes both out-byref parameters.
-            if (!frozen || __args == null || __args.Length != 2 || frozenPlacePosition == null)
-                return;
-            __args[0] = frozenPlacePosition;
         }
 
         private static void CreateGhostPostfix()
