@@ -39,7 +39,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
         // counts or bypass vanilla resource consumption.
         private static readonly Dictionary<object, int> UiAvailableCache =
             new Dictionary<object, int>();
-        private static int uiCacheFrame = -1;
+        private static DateTime uiCacheCreatedUtc;
+        private static readonly TimeSpan UiCacheLifetime = TimeSpan.FromMilliseconds(850);
         private static object harmony;
         private static MethodInfo unpatch;
         private static MethodInfo patch;
@@ -181,7 +182,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
             Storage.Clear();
             PendingItemIds.Clear();
             UiAvailableCache.Clear();
-            uiCacheFrame = -1;
+            uiCacheCreatedUtc = default(DateTime);
             lastSentItemId = null;
             lastRequestedTechType = null;
             lastPruneFrame = -1;
@@ -199,9 +200,16 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 var contents = Get(__instance, "container");
                 if (root != null)
                 {
-                    if (contents == null) Storage.Remove(root);
-                    else Storage[root] = contents;
-                    UiAvailableCache.Clear();
+                    if (contents == null)
+                    {
+                        if (Storage.Remove(root)) UiAvailableCache.Clear();
+                    }
+                    else if (!Storage.TryGetValue(root, out var existing) ||
+                             !ReferenceEquals(existing, contents))
+                    {
+                        Storage[root] = contents;
+                        UiAvailableCache.Clear();
+                    }
                 }
             }
             catch (Exception e) { Once("CFC_REGISTER: " + e.Message); }
@@ -456,7 +464,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 // An item ID may be requested again only in a new session.
                 PendingItemIds.Clear();
                 UiAvailableCache.Clear();
-                uiCacheFrame = -1;
+                uiCacheCreatedUtc = default(DateTime);
                 lastSentItemId = null;
                 return;
             }
@@ -600,17 +608,23 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 wantedTechType == null) return 0;
             try
             {
-                var frame = Convert.ToInt32(Get(Reflect.Type("UnityEngine.Time"),
-                    "frameCount") ?? -1);
-                if (frame != uiCacheFrame)
+                // The fabricator probes ActionAvailable repeatedly while
+                // navigating a recipe tree. Invalidating on EVERY frame
+                // previously enumerated every item in every locker dozens
+                // of times per second, causing ~1s UI freezes in large bases.
+                // This is ADVISORY UI stock only; a real transfer still
+                // validates the exact server-approved item ID.
+                var now = DateTime.UtcNow;
+                if (uiCacheCreatedUtc == default(DateTime) ||
+                    now - uiCacheCreatedUtc >= UiCacheLifetime)
                 {
-                    uiCacheFrame = frame;
+                    uiCacheCreatedUtc = now;
                     UiAvailableCache.Clear();
                 }
                 if (UiAvailableCache.TryGetValue(wantedTechType, out var cached))
                     return cached;
-
-                PruneDeadStorages();
+                // Pruning and scene discovery run from Player.Update at a
+                // bounded cadence, never synchronously in UI recipe callbacks.
                 var player = Reflect.Type("Player");
                 var origin = Get(Get(player, "main"), "transform");
                 var position = Get(origin, "position");
@@ -619,8 +633,11 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 var identifier = Get(network, "Identifier");
                 if (position == null || identifier == null) return 0;
 
-                var found = new HashSet<string>(StringComparer.Ordinal);
-                foreach (var kv in Storage.ToArray())
+                int count = 0;
+                bool hasReservedIds = PendingItemIds.Count > 0;
+                var seen = hasReservedIds ?
+                    new HashSet<string>(StringComparer.Ordinal) : null;
+                foreach (var kv in Storage)
                 {
                     var root = kv.Key;
                     var container = kv.Value;
@@ -631,6 +648,29 @@ namespace Sirro.BZ.MP.ConstrutorZero
                     if (!ResolveLocker(root, container, identifier,
                         out _, out _)) continue;
 
+                    if (!hasReservedIds)
+                    {
+                        // Native ItemsContainer.GetCount(TechType) is much
+                        // cheaper than creating and reflecting every
+                        // InventoryItem / UniqueIdentifier in a packed base.
+                        var getCount = container.GetType().GetMethods(All)
+                            .FirstOrDefault(m => m.Name == "GetCount" &&
+                                m.GetParameters().Length == 1 &&
+                                m.GetParameters()[0].ParameterType
+                                    .IsInstanceOfType(wantedTechType));
+                        if (getCount != null)
+                        {
+                            count += Math.Max(0, Convert.ToInt32(
+                                getCount.Invoke(container, new[] { wantedTechType }),
+                                CultureInfo.InvariantCulture));
+                            if (count >= 80) break;
+                            continue;
+                        }
+                    }
+
+                    // Only the fallback / pending-ID path needs to inspect
+                    // item identities. Requested items remain quarantined
+                    // despite any stale UI-side locker representation.
                     foreach (var item in ItemsOfType(container, wantedTechType))
                     {
                         var pickup = Get(item, "item");
@@ -638,14 +678,15 @@ namespace Sirro.BZ.MP.ConstrutorZero
                             !Equals(GetTechType(pickup), wantedTechType)) continue;
                         var id = GetIdentity(identifier, Get(pickup, "gameObject"));
                         if (!string.IsNullOrWhiteSpace(id) &&
-                            !PendingItemIds.ContainsKey(id))
-                            found.Add(id);
-                        if (found.Count >= 80) break;
+                            !PendingItemIds.ContainsKey(id) &&
+                            (seen == null || seen.Add(id)))
+                            count++;
+                        if (count >= 80) break;
                     }
-                    if (found.Count >= 80) break;
+                    if (count >= 80) break;
                 }
-                UiAvailableCache[wantedTechType] = found.Count;
-                return found.Count;
+                UiAvailableCache[wantedTechType] = count;
+                return count;
             }
             catch (Exception e)
             {
