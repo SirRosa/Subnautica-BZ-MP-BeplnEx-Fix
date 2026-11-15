@@ -8,6 +8,12 @@ namespace Subnautica.API.Enums
 
 namespace Subnautica.API.Features
 {
+    // Minimal network state used by the simulated integration harness.
+    // Compilation-only substitute; never included in any plugin distribution.
+    public class Network
+    {
+        public static bool IsMultiplayerActive { get; set; } = true;
+    }
     public abstract class SubnauticaPlugin
     {
         public virtual string Name { get; } = string.Empty;
