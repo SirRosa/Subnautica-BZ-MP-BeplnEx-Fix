@@ -47,7 +47,7 @@ jobs:
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item "src/ConstrutorZero/bin/Release/net472/Sirro.BZ.MP.ConstrutorZero.dll" dist/
           @"
-          CONSTRUTOR ZERO v0.3.0-rc1 -- STABILIZATION RELEASE CANDIDATE
+          CONSTRUTOR ZERO v0.3.1-rc2 -- STABILIZATION RELEASE CANDIDATE
           BOT Benson Below Zero Multiplayer 3.0.1. Client plugin only.
           
           ALL TESTS IN CI ARE ABI CONTRACT OR SIMULATED NETWORK TESTS.
@@ -66,6 +66,8 @@ jobs:
           - Deferred craft cancellation on Close, OnDeselect, mode/relock/disconnect
           - Building ghost and permission restoration / safe MP collision checks
           - Wall/ceiling snap and complete pose rollback on reflection exceptions
+          - Fail-closed CFC after unexpected Unity/Harmony exceptions
+          - Before auto-building, verify all missing recipe items are present
           
           ALL AUTO TRANSFERS ARE DISABLED BY DEFAULT:
           %APPDATA%\.botbenson\Subnautica Below Zero\Game\Config\ConstrutorZero.Containers.ini
@@ -89,10 +91,10 @@ jobs:
           Source commit: ${{ github.sha }}
           "@ | Set-Content "dist/README-STABILIZATION.txt"
           Copy-Item "STABILIZATION-301.md" "dist/STABILIZATION-301.md"
-          Compress-Archive -Path "dist/Sirro.BZ.MP.ConstrutorZero.dll", "dist/README-STABILIZATION.txt", "dist/STABILIZATION-301.md" -DestinationPath "dist/Construtor-Zero-0.3.0-rc1.zip" -Force
+          Compress-Archive -Path "dist/Sirro.BZ.MP.ConstrutorZero.dll", "dist/README-STABILIZATION.txt", "dist/STABILIZATION-301.md" -DestinationPath "dist/Construtor-Zero-0.3.1-rc2.zip" -Force
           Get-FileHash "dist/Sirro.BZ.MP.ConstrutorZero.dll" -Algorithm SHA256 | Format-List
-          Get-Item "dist/Construtor-Zero-0.3.0-rc1.zip" | Format-List Name,Length
+          Get-Item "dist/Construtor-Zero-0.3.1-rc2.zip" | Format-List Name,Length
       - uses: actions/upload-artifact@v4
         with:
-          name: Construtor-Zero-0.3.0-rc1
-          path: dist/Construtor-Zero-0.3.0-rc1.zip
+          name: Construtor-Zero-0.3.1-rc2
+          path: dist/Construtor-Zero-0.3.1-rc2.zip
