@@ -232,7 +232,15 @@ namespace Sirro.BZ.MP.ConstrutorZero
             }
             if (!IsNetworkActive())
             {
+                // A disconnect ends the entire deferred operation, not just its
+                // ingredient queue. Otherwise the crafting/building coordinators
+                // can retain a stale replay across the next session.
+                AutoBuildCoordinator.Cancel("Multiplayer disconnected; building cancelled");
+                AutoCraftCoordinator.Cancel("Multiplayer disconnected; crafting cancelled");
                 RecipePrefetch.Cancel("Multiplayer disconnected; requests cancelled", Info);
+                // An item ID may be requested again only in a new session.
+                PendingItemIds.Clear();
+                lastSentItemId = null;
                 return;
             }
             AutoBuildCoordinator.Tick();
@@ -321,10 +329,13 @@ namespace Sirro.BZ.MP.ConstrutorZero
                         if (string.IsNullOrWhiteSpace(itemId) || string.IsNullOrWhiteSpace(containerId))
                             continue;
                         var now = DateTime.UtcNow;
-                        if (PendingItemIds.TryGetValue(itemId, out var requestedAt) &&
-                            (now - requestedAt).TotalSeconds < 5)
+                        // A slow or rejected server request is NOT proof that
+                        // its item can be requested again. Keep the ID quarantined
+                        // until exact inventory acknowledgement or a disconnect.
+                        // The old five-second expiry allowed duplicate requests
+                        // while the prefetch timeout was still 20 seconds.
+                        if (PendingItemIds.ContainsKey(itemId))
                             continue;
-                        PendingItemIds.Remove(itemId);
                         // Explicit, unique identity guards are required before issuing server requests.
                         var constructor = argsType.GetConstructors(All)
                             .FirstOrDefault(c => c.GetParameters().Length == 5);
