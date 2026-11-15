@@ -35,8 +35,6 @@ namespace Sirro.BZ.MP.ConstrutorZero
         // authoritative server is processing the previous request.
         private static readonly Dictionary<string, DateTime> PendingItemIds =
             new Dictionary<string, DateTime>(StringComparer.Ordinal);
-        private static readonly HashSet<string> AcknowledgedItemIds =
-            new HashSet<string>(StringComparer.Ordinal);
         // UI affordability is advisory only. It must never inflate inventory
         // counts or bypass vanilla resource consumption.
         private static readonly Dictionary<object, int> UiAvailableCache =
@@ -57,8 +55,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
             // Do NOT release the same ID immediately on ACK: the local
             // locker representation can remain stale until a later server
             // packet updates it, and would otherwise be requested twice.
-            if (itemId != null && PendingItemIds.ContainsKey(itemId))
-                AcknowledgedItemIds.Add(itemId);
+            // Keep this identity quarantined for the current session,
+            // even after ACK; a stale locker object must never submit it again.
             UiAvailableCache.Clear();
         }
         private static int lastTransferFrame = -1;
@@ -97,6 +95,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 Hook("uGUI_CraftingMenu", "ActionAvailable", null,
                     nameof(CraftAvailablePostfix));
                 Hook("uGUI_CraftingMenu", "Close", nameof(CraftMenuClosePrefix), null);
+                Hook("uGUI_CraftingMenu", "OnDeselect", nameof(CraftMenuClosePrefix), null);
                 Hook("Player", "Update", null, nameof(PlayerUpdate));
                 // Required hooks are the transaction safety boundary:
                 // a missing inventory acknowledgement or update loop would
@@ -107,6 +106,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
                     "uGUI_CraftingMenu.Action",
                     "uGUI_CraftingMenu.ActionAvailable",
                     "uGUI_CraftingMenu.Close",
+                    "uGUI_CraftingMenu.OnDeselect",
                     "Player.Update"
                 })
                 {
@@ -171,7 +171,6 @@ namespace Sirro.BZ.MP.ConstrutorZero
             RecipePrefetch.Reset();
             Storage.Clear();
             PendingItemIds.Clear();
-            AcknowledgedItemIds.Clear();
             UiAvailableCache.Clear();
             uiCacheFrame = -1;
             lastSentItemId = null;
@@ -305,8 +304,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 RecipePrefetch.Cancel("Multiplayer disconnected; requests cancelled", Info);
                 // An item ID may be requested again only in a new session.
                 PendingItemIds.Clear();
-                AcknowledgedItemIds.Clear();
-                UiAvailableCache.Clear();
+                    UiAvailableCache.Clear();
                 uiCacheFrame = -1;
                 lastSentItemId = null;
                 return;
@@ -477,6 +475,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
                             ContainerConfig.RangeMeters) continue;
 
                     var gameObject = Get(root, "gameObject");
+                    if (gameObject == null) continue;
                     var constructable = Component(gameObject, "Constructable", true);
                     if (constructable == null) continue;
                     var techType = Get(constructable, "techType");
