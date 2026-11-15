@@ -288,14 +288,18 @@ public static class Program
         Assert(gui.ActionAvailable(new uGUI_CraftingMenu.Node {
                 action = TreeAction.Expand, techType = TechType.TestRecipe }),
             "Fabricator category navigation stays available");
+        var uiCacheTime = cfcType.GetField("uiCacheCreatedUtc",
+            BindingFlags.Static | BindingFlags.NonPublic);
         autoLocker.container.Remove(fifth);
-        Time.frameCount++;  // invalidate per-frame advisory availability cache
+        // Server stock preview is intentionally advisory and cached for
+        // 850ms. Force a cache expiry to simulate that time passing.
+        uiCacheTime.SetValue(null, DateTime.UtcNow.AddSeconds(-3));
         Assert(!gui.ActionAvailable(craftNode),
-            "Insufficient locker ingredients do not unlock fabricator recipe");
+            "Insufficient locker ingredients do not unlock fabricator recipe after cache expiry");
         autoLocker.container.Add(fifth);
-        Time.frameCount++;
+        uiCacheTime.SetValue(null, DateTime.UtcNow.AddSeconds(-3));
         Assert(gui.ActionAvailable(craftNode),
-            "Fabricator availability refreshes on newly stocked locker");
+            "Fabricator availability refreshes on newly stocked locker after cache expiry");
         gui.Action(new uGUI_CraftingMenu.Node {
             action = TreeAction.Expand, techType = TechType.TestRecipe });
         Assert(gui.ExpandActions == 1,
