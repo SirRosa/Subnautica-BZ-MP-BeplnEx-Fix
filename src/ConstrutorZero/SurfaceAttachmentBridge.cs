@@ -229,12 +229,61 @@ namespace Sirro.BZ.MP.ConstrutorZero
                     camZ + rememberedYawZ * distance);
                 var direction = NewVector(origin.GetType(), 0f, -1f, 0f);
                 float castDistance = 8f;
-                if (Raycast(builder, start, direction, castDistance, out var ray) &&
-                    MatchSurface(builder, ray, surface))
+                if (FindFloorSurface(builder, start, direction, castDistance,
+                    out var floor))
                 {
-                    hit = ray;
+                    hit = floor;
                     return true;
                 }
+            }
+            return false;
+        }
+
+        private static bool FindFloorSurface(Type builder, object origin,
+            object direction, float distance, out object hit)
+        {
+            hit = null;
+            // In a packed base the downward ray frequently hits a locker TOP
+            // first (also a horizontal/upward normal), not the actual floor.
+            // RaycastAll lets floor objects reach the structural floor behind
+            // surrounding furniture. We do NOT classify another piece of
+            // furniture as a "floor", even when G enables clipping.
+            var physics = Reflect.Type("UnityEngine.Physics");
+            var query = Reflect.Type("UnityEngine.QueryTriggerInteraction");
+            if (physics == null || query == null) return false;
+            var vector = origin.GetType();
+            var raycastAll = physics.GetMethods(All).FirstOrDefault(m =>
+            {
+                var p = m.GetParameters();
+                return m.Name == "RaycastAll" && m.IsStatic &&
+                    p.Length == 5 && p[0].ParameterType == vector &&
+                    p[1].ParameterType == vector &&
+                    p[2].ParameterType == typeof(float) &&
+                    p[3].ParameterType == typeof(int) &&
+                    p[4].ParameterType == query;
+            });
+            if (raycastAll == null)
+            {
+                return Raycast(builder, origin, direction, distance, out hit) &&
+                    MatchSurface(builder, hit, Anchor.Floor) &&
+                    !IsFurnitureHit(hit) && ValidateHit(builder, hit, Anchor.Floor);
+            }
+            var mask = Read(builder, "placeLayerMask");
+            var rawMask = mask is int ? mask : Read(mask, "value");
+            if (rawMask == null) return false;
+            var hits = raycastAll.Invoke(null, new object[] {
+                origin, direction, distance, Convert.ToInt32(rawMask),
+                Enum.Parse(query, "Ignore")
+            }) as IEnumerable;
+            if (hits == null) return false;
+            foreach (var candidate in hits.Cast<object>()
+                .Where(h => h != null && MatchSurface(builder, h, Anchor.Floor) &&
+                    !IsFurnitureHit(h))
+                .OrderBy(h => DistanceSquared(origin, Read(h, "point"))))
+            {
+                if (!ValidateHit(builder, candidate, Anchor.Floor)) continue;
+                hit = candidate;
+                return true;
             }
             return false;
         }
