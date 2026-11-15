@@ -60,7 +60,27 @@ namespace UnityEngine
         public object GetComponentInParent(Type type) => GetComponent(type);
     }
 }
-public enum TechType { None, Titanium, Locker, SmallLocker }
+public enum TechType { None, Titanium, Locker, SmallLocker, TestRecipe }
+public class ItemsContainer {}
+public class Ingredient
+{
+    public TechType techType { get; }
+    public int amount { get; }
+    public Ingredient(TechType techType, int amount) { this.techType = techType; this.amount = amount; }
+}
+public static class TechData
+{
+    public static System.Collections.ObjectModel.ReadOnlyCollection<Ingredient> GetIngredients(TechType recipe) =>
+        new System.Collections.ObjectModel.ReadOnlyCollection<Ingredient>(
+            recipe == TechType.TestRecipe ? new List<Ingredient> {
+                new Ingredient(TechType.Titanium, 2) } : new List<Ingredient>());
+}
+public class uGUI_RecipeEntry
+{
+    public TechType techType { get; set; }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public void UpdateIngredients(ItemsContainer inventory, bool ping) { }
+}
 public sealed class Pickupable
 {
     public TechType techType = TechType.Titanium;
@@ -87,6 +107,8 @@ public class Inventory
     public int GetPickupCount(TechType type) => 0;
     [MethodImpl(MethodImplOptions.NoInlining)]
     public bool DestroyItem(TechType destroyTechType, bool skipEquipment = false) => false;
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public void OnAddItem(InventoryItem item) { }
 }
 public class Player
 {
