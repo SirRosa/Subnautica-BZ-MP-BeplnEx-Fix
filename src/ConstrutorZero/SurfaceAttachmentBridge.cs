@@ -26,12 +26,10 @@ namespace Sirro.BZ.MP.ConstrutorZero
         private static bool warned, reportedFloor, reportedWall, reportedMiss;
         private static float rememberedYawX, rememberedYawZ = 1f;
         private static object lastPrefab, lastPosition, lastRotation;
-        private static DateTime lastValidUtc;
 
         internal static void Reset()
         {
             lastPrefab = lastPosition = lastRotation = null;
-            lastValidUtc = default(DateTime);
             rememberedYawX = 0f;
             rememberedYawZ = 1f;
             warned = false;
@@ -434,7 +432,6 @@ namespace Sirro.BZ.MP.ConstrutorZero
             lastPrefab = prefab;
             lastPosition = Read(builder, "placePosition");
             lastRotation = Read(builder, "placeRotation");
-            lastValidUtc = DateTime.UtcNow;
         }
 
         private static void KeepLastSurfaceGhost(Type builder, object prefab)
