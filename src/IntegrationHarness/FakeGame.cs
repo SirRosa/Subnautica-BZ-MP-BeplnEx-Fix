@@ -60,7 +60,7 @@ namespace UnityEngine
         public object GetComponentInParent(Type type) => GetComponent(type);
     }
 }
-public enum TechType { None, Titanium, Copper, Locker, SmallLocker, TestRecipe }
+public enum TechType { None, Titanium, Copper, Locker, SmallLocker, TestRecipe, DuplicateIngredientRecipe }
 public class ItemsContainer {}
 public class Ingredient
 {
@@ -90,7 +90,10 @@ public static class TechData
     public static System.Collections.ObjectModel.ReadOnlyCollection<Ingredient> GetIngredients(TechType recipe) =>
         new System.Collections.ObjectModel.ReadOnlyCollection<Ingredient>(
             recipe == TechType.TestRecipe ? new List<Ingredient> {
-                new Ingredient(TechType.Titanium, 2) } : new List<Ingredient>());
+                new Ingredient(TechType.Titanium, 2) } :
+            recipe == TechType.DuplicateIngredientRecipe ? new List<Ingredient> {
+                new Ingredient(TechType.Titanium, 2),
+                new Ingredient(TechType.Titanium, 1) } : new List<Ingredient>());
 }
 public enum TreeAction { None, Expand, Craft }
 public class uGUI_CraftingMenu
