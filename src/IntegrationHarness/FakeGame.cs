@@ -313,6 +313,7 @@ public static class Targeting
 public static class Builder
 {
     public static bool CanPlace = true;
+    public static bool CollisionSpaceAvailable = true;
     public static bool canPlace => CanPlace;
     public static int PlacementCalls = 0;
     public static bool isPlacing => ghostModel != null;
@@ -349,7 +350,7 @@ public static class Builder
         List<object> bounds, Func<object,bool> predicate, List<UnityEngine.GameObject> results) {}
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static bool CheckSpace(UnityEngine.Vector3 position, UnityEngine.Quaternion rot,
-        List<object> bounds, int mask, object ignore) => true;
+        List<object> bounds, int mask, object ignore) => CollisionSpaceAvailable;
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static void CheckSpace(UnityEngine.Vector3 position, UnityEngine.Quaternion rot,
         List<object> bounds, int mask, object ignore, List<UnityEngine.GameObject> obstacles) {}
