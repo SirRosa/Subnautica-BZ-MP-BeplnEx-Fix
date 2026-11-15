@@ -125,6 +125,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
             }
             catch (Exception e) { Trace.Info("CFC_UNPATCH_FAILED: " + e.Message); }
             AutoCraftCoordinator.Reset();
+            AutoBuildCoordinator.Reset();
             RecipePrefetch.Reset();
             Storage.Clear();
             PendingItemIds.Clear();
@@ -234,6 +235,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 RecipePrefetch.Cancel("Multiplayer disconnected; requests cancelled", Info);
                 return;
             }
+            AutoBuildCoordinator.Tick();
             RecipePrefetch.Pump(Info);
             AutoCraftCoordinator.Tick();
             if (!ContainerConfig.ManualPrefetchEnabled)
@@ -442,6 +444,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
         internal static bool Enabled = true;
         internal static bool ManualPrefetchEnabled = false;
         internal static bool AutoCraftEnabled = false;
+        internal static bool AutoBuildEnabled = false;
+        internal static bool AutoPlaceAfterPrefetch = false;
         internal static string TransferKey = "F6";
         internal static readonly Dictionary<string, bool> Allowed = new Dictionary<string, bool>(
             StringComparer.OrdinalIgnoreCase);
@@ -471,6 +475,10 @@ namespace Sirro.BZ.MP.ConstrutorZero
                         "# Auto craft intercepts only uGUI_CraftingMenu.Action(Craft), not category expansion.",
                         "# This is experimental and requires a full multiplayer gameplay test.",
                         "auto_craft_enabled=false",
+                        "# For normal builder tools only: defer construction until materials arrive.",
+                        "# Unchanged pose and normal multiplayer placement checks are enforced.",
+                        "auto_build_enabled=false",
+                        "auto_place_after_prefetch=false",
                         "transfer_key=F6",
                         "Locker=true",
                         "SmallLocker=true"
@@ -487,6 +495,10 @@ namespace Sirro.BZ.MP.ConstrutorZero
                         ManualPrefetchEnabled = value.Equals("true", StringComparison.OrdinalIgnoreCase);
                     else if (name.Equals("auto_craft_enabled", StringComparison.OrdinalIgnoreCase))
                         AutoCraftEnabled = value.Equals("true", StringComparison.OrdinalIgnoreCase);
+                    else if (name.Equals("auto_build_enabled", StringComparison.OrdinalIgnoreCase))
+                        AutoBuildEnabled = value.Equals("true", StringComparison.OrdinalIgnoreCase);
+                    else if (name.Equals("auto_place_after_prefetch", StringComparison.OrdinalIgnoreCase))
+                        AutoPlaceAfterPrefetch = value.Equals("true", StringComparison.OrdinalIgnoreCase);
                     else if (name.Equals("range_meters", StringComparison.OrdinalIgnoreCase) &&
                         float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var range))
                         RangeMeters = Math.Max(1f, Math.Min(300f, range));
