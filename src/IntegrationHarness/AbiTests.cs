@@ -23,6 +23,14 @@ public static class AbiTests
             setSurface.GetParameters()[2].ParameterType == typeof(Quaternion).MakeByRefType(),
             "Actual Builder.SetPlaceOnSurface ABI reflected in test fixture");
 
+        var submodule = typeof(Builder).GetMethod("CheckAsSubModule", All);
+        assert(submodule != null && submodule.ReturnType == typeof(bool) &&
+            submodule.GetParameters().Length == 1 &&
+            submodule.GetParameters()[0].ParameterType ==
+                typeof(Collider).MakeByRefType() &&
+            submodule.GetParameters()[0].IsOut,
+            "Current Below Zero fixture has CheckAsSubModule(out Collider), not the old no-arg method");
+
         var defaultPlace = typeof(Builder).GetMethod("SetDefaultPlaceTransform", All);
         assert(defaultPlace != null && defaultPlace.ReturnType == typeof(void) &&
             defaultPlace.GetParameters().Length == 2 &&
