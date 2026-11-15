@@ -82,7 +82,11 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 var position = Read(builder, "placePosition");
                 var rotation = Read(builder, "placeRotation");
                 if (position == null || rotation == null) return;
-                var args = new object[] { hit, position, rotation };
+                // Fake or real Builder.SetPlaceOnSurface may populate the
+                // by-ref position from hit.point; starting there also
+                // guarantees our fallback is not tied to the former
+                // camera-pitch position if a helper fails to update it.
+                var args = new object[] { hit, Read(hit, "point"), rotation };
                 setSurface.Invoke(null, args); // existing SnapHook rounds tangent axes
                 var collider = Read(hit, "collider");
                 var hitObject = Read(collider, "gameObject");
