@@ -117,6 +117,14 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 enabled = true;
                 Trace.Info("CFC_READY: hooks=" + installedHooks +
                     ", range=" + ContainerConfig.RangeMeters + "m, server_transfer_only=true");
+                Trace.Info("CFC_SETTINGS: enabled=" + ContainerConfig.Enabled +
+                    ", auto_craft=" + ContainerConfig.AutoCraftEnabled +
+                    ", auto_build=" + ContainerConfig.AutoBuildEnabled +
+                    ", manual_prefetch=" + ContainerConfig.ManualPrefetchEnabled);
+                if (!ContainerConfig.AutoCraftEnabled && !ContainerConfig.AutoBuildEnabled &&
+                    !ContainerConfig.ManualPrefetchEnabled)
+                    Trace.Info("CFC_OFF_BY_CONFIG: enable auto_craft_enabled=true in " +
+                        "ConstrutorZero.Containers.ini for fabricator crafting");
                 Trace.Info("CFC_PROTOCOL: IsAllowed=false only means the MP event handler dispatched; " +
                     "it is NOT a server-accepted transaction");
                 Trace.Info("CFC_LIMITATION: no server recipe-atomicity or rollback; " +
@@ -195,6 +203,104 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 }
             }
             catch (Exception e) { Once("CFC_REGISTER: " + e.Message); }
+        }
+
+        private static void DiscoverSceneStorages()
+        {
+            // Most placed lockers already exist before a client-side plugin
+            // enables. Awake-only registration permanently misses them.
+            try
+            {
+                var unity = Reflect.Type("UnityEngine.Object");
+                var containerType = Reflect.Type("StorageContainer");
+                if (unity == null || containerType == null) return;
+                var find = unity.GetMethods(All).FirstOrDefault(m =>
+                    m.Name == "FindObjectsOfType" && m.IsStatic &&
+                    !m.IsGenericMethod && m.GetParameters().Length == 1 &&
+                    m.GetParameters()[0].ParameterType == typeof(Type));
+                if (find == null)
+                {
+                    Once("CFC_SCENE_DISCOVERY_UNAVAILABLE: UnityEngine.Object.FindObjectsOfType(Type)");
+                    return;
+                }
+                var found = find.Invoke(null, new object[] { containerType }) as IEnumerable;
+                if (found == null) return;
+                int count = 0;
+                foreach (var component in found)
+                {
+                    if (component == null) continue;
+                    StorageAwake(component);
+                    count++;
+                }
+                Trace.Info("CFC_STORAGE_SCAN: scene_containers=" + count +
+                    ", registered=" + Storage.Count +
+                    " (supported transfer: Locker/SmallLocker only)");
+            }
+            catch (Exception ex)
+            {
+                Once("CFC_STORAGE_SCAN_FAILED: " +
+                    (ex.InnerException ?? ex).Message);
+            }
+        }
+
+        /// <summary>
+        /// BOT Benson resolves locker ownership via ItemsContainer.tr.parent,
+        /// not StorageContainer.storageRoot.gameObject. The latter is often
+        /// a separate child whose Constructable belongs to a parent object.
+        /// </summary>
+        private static bool ResolveLocker(object origin, object container,
+            object identifier, out object lockerType, out string containerId)
+        {
+            lockerType = null;
+            containerId = null;
+            if (origin == null || container == null || identifier == null)
+                return false;
+
+            var owner = Get(Get(Get(container, "tr"), "parent"), "gameObject");
+            var constructable = Component(owner, "Constructable", false) ??
+                Component(owner, "Constructable", true);
+            if (constructable == null)
+            {
+                var legacyRoot = Get(origin, "gameObject");
+                constructable = Component(legacyRoot, "Constructable", true);
+            }
+            if (constructable == null) return false;
+            lockerType = Get(constructable, "techType");
+            var name = lockerType?.ToString() ?? "";
+            if ((name != "Locker" && name != "SmallLocker") ||
+                !ContainerConfig.IsAllowed(name)) return false;
+
+            containerId = GetIdentity(identifier, Get(constructable, "gameObject"));
+            return !string.IsNullOrWhiteSpace(containerId);
+        }
+
+        /// <summary>
+        /// The real ItemsContainer exposes GetItems(TechType,
+        /// List&lt;InventoryItem&gt;), and is not an IEnumerable of items.
+        /// </summary>
+        private static IEnumerable ItemsOfType(object container, object techType)
+        {
+            if (container == null || techType == null) return new object[0];
+            var itemType = Reflect.Type("InventoryItem");
+            if (itemType == null) return new object[0];
+            var listType = typeof(List<>).MakeGenericType(itemType);
+            var list = (IList)Activator.CreateInstance(listType);
+            var method = container.GetType().GetMethods(All).FirstOrDefault(m =>
+            {
+                if (m.Name != "GetItems" || m.GetParameters().Length != 2)
+                    return false;
+                var parameters = m.GetParameters();
+                return parameters[0].ParameterType.IsInstanceOfType(techType) &&
+                    parameters[1].ParameterType.IsAssignableFrom(listType);
+            });
+            if (method == null)
+            {
+                Once("CFC_ITEMS_API_MISSING: " + container.GetType().FullName +
+                    ".GetItems(TechType,List<InventoryItem>)");
+                return new object[0];
+            }
+            method.Invoke(container, new object[] { techType, list });
+            return list;
         }
 
         private static void PruneDeadStorages()
@@ -322,6 +428,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 currentFrame - lastPruneFrame >= 240)
             {
                 lastPruneFrame = currentFrame;
+                DiscoverSceneStorages();
                 PruneDeadStorages();
             }
             if (!IsNetworkActive())
@@ -411,24 +518,16 @@ namespace Sirro.BZ.MP.ConstrutorZero
                     if (origin == null || container == null ||
                         Distance(pos, Get(Get(origin, "transform") ?? origin, "position")) > ContainerConfig.RangeMeters)
                         continue;
-                    var root = Get(origin, "gameObject");
-                    if (root == null) continue;
-                    var constructable = Component(root, "Constructable", true);
-                    if (constructable == null) continue;
-                    var lockerType = Get(constructable, "techType");
-                    var name = lockerType?.ToString() ?? "";
-                    if (name != "Locker" && name != "SmallLocker") continue;
-                    if (!ContainerConfig.IsAllowed(name)) continue;
+                    if (!ResolveLocker(origin, container, identifier,
+                        out var lockerType, out var containerId)) continue;
 
-                    foreach (var item in container as IEnumerable ?? new object[0])
+                    foreach (var item in ItemsOfType(container, wantedTechType))
                     {
                         var pickup = Get(item, "item");
                         if (pickup == null || !Equals(GetTechType(pickup), wantedTechType)) continue;
                         var gameObject = Get(pickup, "gameObject");
                         var itemId = GetIdentity(identifier, gameObject);
-                        var containerId = GetIdentity(identifier, Get(constructable, "gameObject"));
-                        if (string.IsNullOrWhiteSpace(itemId) || string.IsNullOrWhiteSpace(containerId))
-                            continue;
+                        if (string.IsNullOrWhiteSpace(itemId)) continue;
                         var now = DateTime.UtcNow;
                         // A slow or rejected server request is NOT proof that
                         // its item can be requested again. Keep the ID quarantined
@@ -506,18 +605,10 @@ namespace Sirro.BZ.MP.ConstrutorZero
                         Distance(position, Get(Get(root, "transform") ?? root, "position")) >
                             ContainerConfig.RangeMeters) continue;
 
-                    var gameObject = Get(root, "gameObject");
-                    if (gameObject == null) continue;
-                    var constructable = Component(gameObject, "Constructable", true);
-                    if (constructable == null) continue;
-                    var techType = Get(constructable, "techType");
-                    var name = techType?.ToString() ?? "";
-                    if ((name != "Locker" && name != "SmallLocker") ||
-                        !ContainerConfig.IsAllowed(name) ||
-                        string.IsNullOrWhiteSpace(GetIdentity(identifier,
-                            Get(constructable, "gameObject")))) continue;
+                    if (!ResolveLocker(root, container, identifier,
+                        out _, out _)) continue;
 
-                    foreach (var item in container as IEnumerable ?? new object[0])
+                    foreach (var item in ItemsOfType(container, wantedTechType))
                     {
                         var pickup = Get(item, "item");
                         if (pickup == null ||
