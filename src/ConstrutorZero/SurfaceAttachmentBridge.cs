@@ -300,6 +300,20 @@ namespace Sirro.BZ.MP.ConstrutorZero
             if (collider == null || gameObject == null || point == null)
                 return false;
 
+            // Our downward raycast can be longer than vanilla's horizontal
+            // builder range. Never allow the fallback to reach a surface
+            // further than the original camera-to-point placeMaxDistance.
+            var camera = Read(Reflect.Type("MainCamera"), "camera");
+            var cameraPos = Read(Read(camera, "transform"), "position");
+            if (cameraPos == null) return false;
+            float dx = Float(point, "x") - Float(cameraPos, "x");
+            float dy = Float(point, "y") - Float(cameraPos, "y");
+            float dz = Float(point, "z") - Float(cameraPos, "z");
+            var range = GetFloat(builder, "placeMaxDistance", 3f);
+            if (range <= 0f ||
+                dx * dx + dy * dy + dz * dz > (range + .01f) * (range + .01f))
+                return false;
+
             // Current BZ CheckAsSubModule also rejects SeaTruck surfaces
             // and requires Constructable.CheckFlags (which takes extra
             // underwater/hit-point parameters in later BZ builds). A
