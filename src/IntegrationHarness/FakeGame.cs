@@ -122,7 +122,7 @@ namespace UnityEngine
             WallRaycasts++;
             if (!WallAvailable) return false;
             hit = new RaycastHit {
-                point = new Vector3(3f,origin.y,3f),
+                point = new Vector3(origin.x,origin.y,2.5f),
                 normal = new Vector3(0,0,-1),
                 collider = WorldWall
             };
