@@ -275,8 +275,10 @@ namespace Sirro.BZ.MP.ConstrutorZero
         }
 
         /// <summary>
-        /// The real ItemsContainer exposes GetItems(TechType,
-        /// List&lt;InventoryItem&gt;), and is not an IEnumerable of items.
+        /// The supplied BZ game DLL exposes GetItems(TechType,
+        /// List&lt;InventoryItem&gt;) AND IEnumerable&lt;InventoryItem&gt;.
+        /// Prefer the type-filtered query to keep the request tied to the
+        /// exact TechType that the server receives.
         /// </summary>
         private static IEnumerable ItemsOfType(object container, object techType)
         {
