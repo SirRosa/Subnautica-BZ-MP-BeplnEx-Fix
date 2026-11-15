@@ -54,6 +54,9 @@ namespace Sirro.BZ.MP.ConstrutorZero
                     m.GetParameters().Length >= 3 &&
                     m.GetParameters()[0].ParameterType == typeof(MethodBase));
                 unpatch = ht.GetMethod("UnpatchSelf", All);
+                if (unpatch == null)
+                    unpatch = ht.GetMethod("UnpatchAll", All,
+                        null, new[] { typeof(string) }, null);
                 if (patchMethod == null) throw new MissingMethodException("Harmony.Patch");
 
                 // User input and ghost changes are applied to the LOCAL vanilla Builder only.
@@ -122,7 +125,14 @@ namespace Sirro.BZ.MP.ConstrutorZero
 
         public static void Uninstall()
         {
-            try { RestoreRanges(); unpatch?.Invoke(harmony, null); }
+            try
+            {
+                RestoreRanges();
+                if (unpatch == null) Trace.Info("BUILDING_UNPATCH_WARNING: no Harmony unpatch API");
+                else if (unpatch.Name == "UnpatchAll")
+                    unpatch.Invoke(harmony, new object[] { "sirro.bz.mp.construtor-zero.building" });
+                else unpatch.Invoke(harmony, null);
+            }
             catch (Exception e) { Trace.Info("BUILDING_UNPATCH: " + e.Message); }
             frozen = attachToTarget = fullOverride = extendedRange = false;
             freezeInitialized = false;
