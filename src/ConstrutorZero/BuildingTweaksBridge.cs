@@ -201,7 +201,9 @@ namespace Sirro.BZ.MP.ConstrutorZero
 
         private static void CreateGhostPostfix()
         {
-            originalDefaultRange = originalMaxRange = null;
+            // Never reset captured base distances here: this game method may execute
+            // repeatedly during a placement. Recapturing multiplied distances would
+            // make the range grow exponentially each frame.
             UpdateRanges();
         }
 
