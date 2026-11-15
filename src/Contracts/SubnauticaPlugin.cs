@@ -13,6 +13,7 @@ namespace Subnautica.API.Features
     public class Network
     {
         public static bool IsMultiplayerActive { get; set; } = true;
+        public static object Identifier { get; set; }
     }
     public abstract class SubnauticaPlugin
     {
