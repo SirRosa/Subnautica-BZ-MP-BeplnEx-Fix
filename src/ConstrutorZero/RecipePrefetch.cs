@@ -46,7 +46,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
 
         internal static bool Begin(object recipeType, Action<string> report)
         {
-            if (IsActive || recipeType == null) return false;
+            if (IsActive || recipeType == null || !RequiresIngredientCosts())
+                return false;
             if (!CraftFromContainersBridge.NetworkActive || !ContainerConfig.Enabled ||
                 !(ContainerConfig.ManualPrefetchEnabled || ContainerConfig.AutoCraftEnabled ||
                   ContainerConfig.AutoBuildEnabled))
@@ -104,6 +105,29 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 Cancel("Recipe lookup failed: " + ex.Message, report);
                 return false;
             }
+        }
+
+        internal static bool RequiresIngredientCosts()
+        {
+            // Verified from the supplied Below Zero Assembly-CSharp.dll:
+            // GameModeManager.GetOption<T>(GameOption.CraftingRequiresResources).
+            // A failed lookup disables our resource-moving automation, leaving
+            // Creative/no-cost mode and unknown modes to the untouched vanilla game.
+            try
+            {
+                var mode = Reflect.Type("GameModeManager");
+                var option = Reflect.Type("GameOption");
+                if (mode == null || option == null) return false;
+                var key = Enum.Parse(option, "CraftingRequiresResources");
+                var getOption = mode.GetMethods(All).FirstOrDefault(m =>
+                    m.Name == "GetOption" && m.IsStatic &&
+                    m.IsGenericMethodDefinition && m.GetParameters().Length == 1 &&
+                    m.GetParameters()[0].ParameterType == option);
+                if (getOption == null) return false;
+                return (bool)getOption.MakeGenericMethod(typeof(bool))
+                    .Invoke(null, new[] { key });
+            }
+            catch { return false; }
         }
 
         internal static bool InventoryHasCompleteRecipe(object recipeType)
