@@ -51,10 +51,16 @@ namespace Sirro.BZ.MP.ConstrutorZero
                     return true;
 
                 CraftFromContainersBridge.RefreshAvailabilityBeforePlacement();
-                if (RecipePrefetch.CanSourceMissingIngredients(techType) &&
-                    RecipePrefetch.Begin(techType, CraftFromContainersBridge.Report))
-                    Trace.Info("CFC_BLUEPRINT_PREFETCH: materials requested separately; " +
-                        "normal multiplayer blueprint placement is NOT deferred");
+                if (RecipePrefetch.CanSourceMissingIngredients(techType))
+                {
+                    if (RecipePrefetch.Begin(techType, CraftFromContainersBridge.Report))
+                        Trace.Info("CFC_BLUEPRINT_PREFETCH: materials requested separately; " +
+                            "normal multiplayer blueprint placement is NOT deferred");
+                }
+                else
+                {
+                    CraftFromContainersBridge.DiagnoseMissingBlueprintSources(techType);
+                }
                 // No remote items? Still place the empty blueprint. Never
                 // create/consume materials, suppress a packet or replay click.
             }
