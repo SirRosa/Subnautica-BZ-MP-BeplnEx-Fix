@@ -199,7 +199,8 @@ namespace UnityEngine
         public object GetComponentInParent(Type type) => GetComponent(type);
     }
 }
-public enum TechType { None, Titanium, Copper, Locker, SmallLocker, TestRecipe, DuplicateIngredientRecipe }
+public enum TechType { None, Titanium, Copper, Locker, SmallLocker, NarrowBed,
+    Bed1, Bed2, PlanterShelf, TestRecipe, DuplicateIngredientRecipe }
 public class ItemsContainer : IEnumerable<InventoryItem>
 {
     private readonly List<InventoryItem> contents = new List<InventoryItem>();
@@ -556,6 +557,8 @@ public static class Builder
     public static UnityEngine.GameObject placementTarget;
     public static bool SimulateSurfaceValidation;
     public static bool SimulateVanillaCameraHit;
+    public static bool SimulateTiltedSurfaceRotation;
+    public static float additiveRotation;
     public static UnityEngine.Collider LastSubmoduleCollider;
     public static UnityEngine.Vector3 placePosition;
     public static UnityEngine.Quaternion placeRotation;
@@ -566,7 +569,16 @@ public static class Builder
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static void SetPlaceOnSurface(UnityEngine.RaycastHit hit,
-        ref UnityEngine.Vector3 position, ref UnityEngine.Quaternion rotation) {}
+        ref UnityEngine.Vector3 position, ref UnityEngine.Quaternion rotation)
+    {
+        if (SimulateTiltedSurfaceRotation)
+        {
+            // Simulate an otherwise valid surface resolution where the
+            // native/look rotation is catastrophically pitched/rolled.
+            position = hit.point;
+            rotation = new UnityEngine.Quaternion(82f, 32f, 76f, 1f);
+        }
+    }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static void Update() {}
