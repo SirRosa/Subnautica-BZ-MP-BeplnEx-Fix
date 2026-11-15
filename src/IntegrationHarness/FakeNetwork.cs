@@ -37,11 +37,13 @@ namespace Subnautica.Events.Handlers
             new HashSet<string>(StringComparer.Ordinal);
         public static int NetworkRequests;
         public static int ServerAccepted;
+        public static bool HasStorageHandler = true;
 
         // Mimics server-side validation of the unique item ID. The client cannot
         // directly remove the object or declare crafting success.
         public static void OnItemRemoving(Subnautica.Events.EventArgs.StorageItemRemovingEventArgs ev)
         {
+            if (!HasStorageHandler) return; // emulate missing MP processor
             NetworkRequests++;
             ev.IsAllowed = false;
             if (ev.UniqueId == "locker-a" && ev.TechType == TechType.Locker &&
