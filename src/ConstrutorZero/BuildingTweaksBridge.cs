@@ -30,6 +30,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
         private static bool freezeInitialized;
         private static bool hasLoggedWorldGuard;
         private static float? originalDefaultRange, originalMaxRange;
+        private static readonly Dictionary<object, Tuple<float, float>> ConstructableRanges =
+            new Dictionary<object, Tuple<float, float>>();
         private static float activeRange = 2f;
         private static object frozenPlacePosition;
         private static Type inputType, keyCodeType, unityTimeType;
@@ -58,6 +60,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 Hook("Builder", "Update", null, nameof(UpdatePostfix));
                 Hook("Builder", "End", null, nameof(EndPostfix));
                 Hook("Builder", "CreateGhost", null, nameof(CreateGhostPostfix));
+                Hook("Builder", "SetDefaultPlaceTransform", nameof(DefaultPlacementPrefix), null);
                 Hook("Builder", "UpdateAllowed", nameof(UpdateAllowedPrefix), nameof(UpdateAllowedPostfix));
                 Hook("Builder", "ValidateOutdoor", null, nameof(AllowedPostfix));
                 Hook("Builder", "GetObstacles", null, nameof(GetObstaclesPostfix));
@@ -199,6 +202,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
             RestoreRanges();
         }
 
+        private static bool DefaultPlacementPrefix() => !frozen;
+
         private static void CreateGhostPostfix()
         {
             // Never reset captured base distances here: this game method may execute
@@ -219,6 +224,34 @@ namespace Sirro.BZ.MP.ConstrutorZero
             var multiplier = extendedRange ? activeRange : 1f;
             SetValue(builder, "placeDefaultDistance", originalDefaultRange.Value * multiplier);
             SetValue(builder, "placeMaxDistance", originalMaxRange.Value * multiplier);
+            try
+            {
+                var prefab = Value(builder, "prefab");
+                var constructableType = Reflect.Type("Constructable");
+                var get = prefab?.GetType().GetMethod("GetComponent", All,
+                    null, new[] { typeof(Type) }, null);
+                var constructable = constructableType == null ? null
+                    : get?.Invoke(prefab, new object[] { constructableType });
+                if (constructable != null)
+                {
+                    if (!ConstructableRanges.TryGetValue(constructable, out var distances))
+                    {
+                        var originalMin = FloatValue(constructable, "placeDefaultDistance");
+                        var originalMax = FloatValue(constructable, "placeMaxDistance");
+                        if (originalMin.HasValue && originalMax.HasValue)
+                        {
+                            distances = Tuple.Create(originalMin.Value, originalMax.Value);
+                            ConstructableRanges[constructable] = distances;
+                        }
+                    }
+                    if (distances != null)
+                    {
+                        SetValue(constructable, "placeDefaultDistance", distances.Item1 * multiplier);
+                        SetValue(constructable, "placeMaxDistance", distances.Item2 * multiplier);
+                    }
+                }
+            }
+            catch (Exception e) { LogOnce("RANGE_CONSTRUCTABLE", e); }
         }
 
         private static void RestoreRanges()
@@ -231,6 +264,16 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 if (originalMaxRange.HasValue)
                     SetValue(builder, "placeMaxDistance", originalMaxRange.Value);
             }
+            foreach (var entry in ConstructableRanges)
+            {
+                try
+                {
+                    SetValue(entry.Key, "placeDefaultDistance", entry.Value.Item1);
+                    SetValue(entry.Key, "placeMaxDistance", entry.Value.Item2);
+                }
+                catch { /* destroyed Unity objects may no longer be accessible */ }
+            }
+            ConstructableRanges.Clear();
             originalDefaultRange = originalMaxRange = null;
         }
 
