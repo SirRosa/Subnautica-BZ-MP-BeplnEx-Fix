@@ -49,15 +49,12 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 var surface = AllowedAnchor(builder, prefab);
                 if (surface == Anchor.None) return;
 
-                // Vanilla success means the camera already found a valid
-                // surface, and its full collision/validation chain passed.
-                // Do not move a valid placement or rewrite its network pose.
-                if (__result)
-                {
-                    Remember(builder, prefab);
-                    return;
-                }
-
+                // Always use the surface-specific anchor, EVEN when vanilla
+                // has accepted its camera-ray placement. Looking down often
+                // makes the original ray succeed at a different height;
+                // the previous "if (__result) return" caused the reported
+                // ghost jump as the camera pitched through that threshold.
+                // The dedicated ray and full validation run every frame.
                 if (!TrySurfaceRay(builder, surface, out var hit))
                 {
                     if (!reportedMiss)
@@ -213,32 +210,116 @@ namespace Sirro.BZ.MP.ConstrutorZero
             // Camera pitch no longer affects XZ target or candidate height.
             // Prefer native/default distance; attempt a closer point when
             // a wall/object blocks the original target.
-            var candidates = surface == Anchor.Floor ?
-                new[] { preferred, preferred - .45f, preferred + .45f, preferred - .9f }
-                : new[] { preferred, maxDistance };
+            if (surface == Anchor.Wall)
+            {
+                // One stable horizontal direction, independent of the
+                // camera's forward/back position or vertical pitch.
+                var dir = NewVector(origin.GetType(), rememberedYawX, 0f, rememberedYawZ);
+                return FindWallSurface(builder, origin, dir, maxDistance, out hit);
+            }
+
+            var candidates = new[] { preferred, preferred - .45f,
+                preferred + .45f, preferred - .9f };
             foreach (var distance in candidates)
             {
                 if (distance < minDistance || distance > maxDistance) continue;
-                var start = surface == Anchor.Floor
-                    ? NewVector(origin.GetType(),
-                        camX + rememberedYawX * distance,
-                        camY + .2f,
-                        camZ + rememberedYawZ * distance)
-                    : NewVector(origin.GetType(), camX, camY,
-                        camZ);
-                var direction = surface == Anchor.Floor
-                    ? NewVector(origin.GetType(), 0f, -1f, 0f)
-                    : NewVector(origin.GetType(), rememberedYawX, 0f, rememberedYawZ);
-                float castDistance = surface == Anchor.Floor ? 8f : maxDistance;
+                var start = NewVector(origin.GetType(),
+                    camX + rememberedYawX * distance,
+                    camY + .2f,
+                    camZ + rememberedYawZ * distance);
+                var direction = NewVector(origin.GetType(), 0f, -1f, 0f);
+                float castDistance = 8f;
                 if (Raycast(builder, start, direction, castDistance, out var ray) &&
                     MatchSurface(builder, ray, surface))
                 {
                     hit = ray;
                     return true;
                 }
-                if (surface == Anchor.Wall) break; // no need to repeat same ray
             }
             return false;
+        }
+
+        private static bool FindWallSurface(Type builder, object origin,
+            object direction, float distance, out object hit)
+        {
+            hit = null;
+            var physics = Reflect.Type("UnityEngine.Physics");
+            var query = Reflect.Type("UnityEngine.QueryTriggerInteraction");
+            if (physics == null || query == null) return false;
+            var vector = origin.GetType();
+            var raycastAll = physics.GetMethods(All).FirstOrDefault(m =>
+            {
+                var p = m.GetParameters();
+                return m.Name == "RaycastAll" && m.IsStatic &&
+                    p.Length == 5 && p[0].ParameterType == vector &&
+                    p[1].ParameterType == vector &&
+                    p[2].ParameterType == typeof(float) &&
+                    p[3].ParameterType == typeof(int) &&
+                    p[4].ParameterType == query;
+            });
+            if (raycastAll == null)
+            {
+                // Older Unity build fallback. Never falsely claim a wall
+                // behind another collider if only one hit can be retrieved.
+                return Raycast(builder, origin, direction, distance, out hit) &&
+                    MatchSurface(builder, hit, Anchor.Wall) &&
+                    ValidateHit(builder, hit, Anchor.Wall) &&
+                    (!IsFurnitureHit(hit) ||
+                     Read(builder, "allowedOnConstructables") is bool allowed && allowed);
+            }
+            var mask = Read(builder, "placeLayerMask");
+            var rawMask = mask is int ? mask : Read(mask, "value");
+            if (rawMask == null) return false;
+            var hits = raycastAll.Invoke(null, new object[] {
+                origin, direction, distance, Convert.ToInt32(rawMask),
+                Enum.Parse(query, "Ignore")
+            }) as IEnumerable;
+            if (hits == null) return false;
+
+            // Priority matters: a SmallLocker must prefer the BASE WALL
+            // behind nearby regular lockers, not attach to the locker mesh.
+            // Keep old object-to-object attachment only as a secondary
+            // option if original placement flags explicitly allow it.
+            var candidates = hits.Cast<object>()
+                .Where(h => h != null && MatchSurface(builder, h, Anchor.Wall))
+                .OrderBy(h => IsFurnitureHit(h) ? 1 : 0)
+                .ThenBy(h => DistanceSquared(origin, Read(h, "point")));
+            foreach (var candidate in candidates)
+            {
+                if (IsFurnitureHit(candidate) &&
+                    !(Read(builder, "allowedOnConstructables") is bool allowed &&
+                      allowed)) continue;
+                if (!ValidateHit(builder, candidate, Anchor.Wall)) continue;
+                hit = candidate;
+                return true;
+            }
+            return false;
+        }
+
+        private static bool IsFurnitureHit(object hit)
+        {
+            var go = Read(Read(hit, "collider"), "gameObject");
+            var componentType = Reflect.Type("Constructable");
+            var baseType = Reflect.Type("ConstructableBase");
+            var baseDecon = Reflect.Type("BaseDeconstructable");
+            if (go == null || componentType == null) return false;
+            var get = go.GetType().GetMethod("GetComponentInParent", All,
+                null, new[] { typeof(Type) }, null);
+            if (get == null) return true; // ambiguous: don't prioritize
+            if (baseType != null &&
+                get.Invoke(go, new object[] { baseType }) != null) return false;
+            if (baseDecon != null &&
+                get.Invoke(go, new object[] { baseDecon }) != null) return false;
+            return get.Invoke(go, new object[] { componentType }) != null;
+        }
+
+        private static float DistanceSquared(object a, object b)
+        {
+            if (a == null || b == null) return float.MaxValue;
+            var x = Float(a, "x") - Float(b, "x");
+            var y = Float(a, "y") - Float(b, "y");
+            var z = Float(a, "z") - Float(b, "z");
+            return x*x + y*y + z*z;
         }
 
         private static bool Raycast(Type builder, object origin,
