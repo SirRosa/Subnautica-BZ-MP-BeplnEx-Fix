@@ -152,8 +152,22 @@ public class BaseGhost {}
 public class LifepodDrop {}
 public enum SurfaceType { Wall, Ceiling, Ground }
 
+public static class Targeting
+{
+    public static float LastMaxDistance;
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static bool GetTarget(float maxDistance, out UnityEngine.GameObject target,
+        out float distance)
+    {
+        LastMaxDistance = maxDistance;
+        target = null;
+        distance = 0f;
+        return false;
+    }
+}
 public static class Builder
 {
+    public static bool isPlacing => ghostModel != null;
     public static UnityEngine.GameObject prefab { get; set; }
     public static UnityEngine.GameObject ghostModel { get; set; }
     public static bool rotationEnabled = true;
