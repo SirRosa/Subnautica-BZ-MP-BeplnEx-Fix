@@ -408,7 +408,10 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 // Never carry the old furniture permissions into a base piece
                 // or an unknown / missing ghost.
                 var prefab = Value(builder, "prefab");
-                if (prefab == null || HasComponent(prefab, "ConstructableBase"))
+                if (prefab == null || Reflect.Type("ConstructableBase") == null ||
+                    prefab.GetType().GetMethod("GetComponent", All,
+                        null, new[] { typeof(Type) }, null) == null ||
+                    HasComponent(prefab, "ConstructableBase"))
                 {
                     RestorePlacementFlags();
                     return;
@@ -442,7 +445,11 @@ namespace Sirro.BZ.MP.ConstrutorZero
                     }
                 }
             }
-            catch (Exception e) { LogOnce("UPDATE_ALLOWED_SURFACE", e); }
+            catch (Exception e)
+            {
+                RestorePlacementFlags();
+                LogOnce("UPDATE_ALLOWED_SURFACE", e);
+            }
         }
 
         private static void UpdateAllowedPostfix(ref bool __result)
