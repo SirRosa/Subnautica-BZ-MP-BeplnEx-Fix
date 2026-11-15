@@ -161,8 +161,11 @@ public static class Builder
     public static void GetObstacles(UnityEngine.Vector3 position, UnityEngine.Quaternion rotation,
         List<object> bounds, Func<object,bool> predicate, List<UnityEngine.GameObject> results) {}
     [MethodImpl(MethodImplOptions.NoInlining)]
+    public static bool CheckSpace(UnityEngine.Vector3 position, UnityEngine.Quaternion rot,
+        List<object> bounds, int mask, object ignore) => true;
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public static void CheckSpace(UnityEngine.Vector3 position, UnityEngine.Quaternion rot,
-        List<object> bounds, int mask, object ignore, ref List<UnityEngine.GameObject> obstacles) {}
+        List<object> bounds, int mask, object ignore, List<UnityEngine.GameObject> obstacles) {}
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static bool TryPlace() => true;
     [MethodImpl(MethodImplOptions.NoInlining)]
