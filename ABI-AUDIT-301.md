@@ -83,3 +83,30 @@ string Identifier.GetIdentityId(UnityEngine.GameObject go, bool generateIfMissin
 This metadata inspection identifies method names, parameters and fields. It does **not** prove each hook's runtime behavior, patch priority against other 3.0.1 plugins, networking semantics, or full parity with original SnapBuilder/Building Tweaks/Craft From Containers. Don't claim production safety based only on successful compilation and simulation.
 
 Next gate: full two-client gameplay and server persistence tests, and authoritative transactions for every crafting ingredient. All user files remain outside this public repo.
+
+## Real 3.0.1 construction packet analysis
+
+The supplied **Subnautica.Network.dll** contains the
+`Subnautica.Network.Models.Server.ConstructionGhostTryPlacingArgs`
+backing fields:
+
+`Type, ChannelType, ChannelId, UniqueId, SubrootId, TechType, LastRotation,
+Position, Rotation, AimTransform, BaseGhostComponent, IsCanPlace, IsBasePiece, IsError`.
+
+No generic `ParentId` / parent-transform object identifier is present.
+`SubrootId` describes a built subroot, not an arbitrary moving vehicle,
+creature or inventory parent. Therefore original Building Tweaks
+`Attach to Target` cannot be represented by a local `transform.SetParent`
+and the unmodified default construction packet. An extension to both
+sender and authoritative world-state persistence is required.
+
+The original BepInEx `CraftFromContainers_BZ.dll` was also inspected:
+its patch classes include `Inventory_GetPickupCount_Patch`,
+`uGUI_RecipeEntry_UpdateIngredients_Patch` and
+`Inventory_DestroyItem_Patch`. Its removal patch reports synchronous
+success; in the multiplayer 3.0.1 server's locker transfer path this must
+not be replicated before authoritative acknowledgement.
+
+**Current gate:** the updated CI harness has 50 passing ABI-fixture and
+simulated Harmony tests. It is not a two-client integration test and does
+not establish that every original feature is available.
