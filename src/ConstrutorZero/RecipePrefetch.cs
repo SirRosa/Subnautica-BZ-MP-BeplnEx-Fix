@@ -105,6 +105,22 @@ namespace Sirro.BZ.MP.ConstrutorZero
             }
         }
 
+        internal static bool BeginCurrentContext(Action<string> report)
+        {
+            // Building always takes precedence over pinned recipe notifications.
+            // Never infer a building recipe from a random inventory-count query.
+            var builder = Reflect.Type("Builder");
+            var isPlacing = CraftFromContainersBridge.Read(builder, "isPlacing");
+            if (isPlacing is bool && (bool)isPlacing)
+            {
+                var techType = CraftFromContainersBridge.Read(builder, "constructableTechType");
+                if (techType != null && !string.Equals(techType.ToString(), "None",
+                    StringComparison.OrdinalIgnoreCase))
+                    return Begin(techType, report);
+            }
+            return BeginLastObserved(report);
+        }
+
         internal static bool BeginLastObserved(Action<string> report)
         {
             object type = CraftFromContainersBridge.Read(observedRecipe, "techType");
