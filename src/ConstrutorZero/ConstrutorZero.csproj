@@ -2,8 +2,8 @@
   <PropertyGroup>
     <TargetFramework>net472</TargetFramework>
     <AssemblyName>Sirro.BZ.MP.ConstrutorZero</AssemblyName>
-    <Version>0.1.0-alpha</Version>
-    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <Version>0.2.0-dev</Version>
+    <AssemblyVersion>0.2.0.0</AssemblyVersion>
     <LangVersion>latest</LangVersion>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
   </PropertyGroup>
