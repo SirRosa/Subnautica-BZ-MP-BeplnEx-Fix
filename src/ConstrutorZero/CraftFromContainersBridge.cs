@@ -776,6 +776,43 @@ namespace Sirro.BZ.MP.ConstrutorZero
             uiCacheCreatedUtc = default(DateTime);
         }
 
+        internal static void DiagnoseMissingBlueprintSources(object techType)
+        {
+            // Called only after a deliberate blueprint click. No HUD spam or
+            // per-recipe UI rescans: this log distinguishes the configured
+            // 100m radius from what Unity has actually streamed to client.
+            try
+            {
+                var pos = Get(Get(Get(Reflect.Type("Player"), "main"),
+                    "transform"), "position");
+                int loaded = 0, inRange = 0;
+                if (pos != null)
+                {
+                    foreach (var entry in Storage)
+                    {
+                        var p = Get(Get(entry.Key, "transform") ??
+                            entry.Key, "position");
+                        var distance = Distance(pos, p);
+                        if (float.IsInfinity(distance) ||
+                            distance == float.MaxValue) continue;
+                        loaded++;
+                        if (distance <= ContainerConfig.RangeMeters) inRange++;
+                    }
+                }
+                Once("CFC_BLUEPRINT_SOURCE_NOT_FOUND: tech=" + techType +
+                    ", config_range_m=" + ContainerConfig.RangeMeters +
+                    ", loaded_storage=" + loaded +
+                    ", loaded_in_radius=" + inRange +
+                    "; this client-only plugin CANNOT query inventories of " +
+                    "unstreamed server containers");
+            }
+            catch (Exception ex)
+            {
+                Once("CFC_BLUEPRINT_SOURCE_DIAGNOSTIC_FAILED: " +
+                    (ex.InnerException ?? ex).Message);
+            }
+        }
+
         internal static void RefreshAvailabilityBeforePlacement()
         {
             // An actual Build click (unlike UI hover) must not use up to
