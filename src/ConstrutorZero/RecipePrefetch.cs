@@ -25,6 +25,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
             BindingFlags.Instance | BindingFlags.Static;
         private static readonly Queue<object> needed = new Queue<object>();
         private static string inFlightItemId;
+        private static object inFlightTechType;
         private static DateTime sentAtUtc;
         private static object observedRecipe;
         private static string activeRecipeName;
@@ -48,7 +49,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
         {
             if (IsActive || recipeType == null || !RequiresIngredientCosts())
                 return false;
-            if (!CraftFromContainersBridge.NetworkActive || !ContainerConfig.Enabled ||
+            if (!CraftFromContainersBridge.Ready ||
+                !CraftFromContainersBridge.NetworkActive || !ContainerConfig.Enabled ||
                 !(ContainerConfig.ManualPrefetchEnabled || ContainerConfig.AutoCraftEnabled ||
                   ContainerConfig.AutoBuildEnabled))
                 return false;
@@ -229,17 +231,22 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 return;
             }
             inFlightItemId = CraftFromContainersBridge.LastRequestedUniqueId;
+            inFlightTechType = desired;
             sentAtUtc = DateTime.UtcNow;
             needed.Dequeue();
             if (string.IsNullOrWhiteSpace(inFlightItemId))
                 Cancel("Server request did not provide an item identity", report);
         }
 
-        internal static bool AcknowledgeInventoryItem(string itemId, Action<string> report)
+        internal static bool AcknowledgeInventoryItem(
+            string itemId, object deliveredTechType, Action<string> report)
         {
-            if (inFlightItemId == null || !string.Equals(inFlightItemId, itemId,
-                StringComparison.Ordinal)) return false;
+            if (inFlightItemId == null ||
+                !string.Equals(inFlightItemId, itemId, StringComparison.Ordinal) ||
+                inFlightTechType == null || deliveredTechType == null ||
+                !Equals(inFlightTechType, deliveredTechType)) return false;
             inFlightItemId = null;
+            inFlightTechType = null;
             CraftFromContainersBridge.AcknowledgeTransfer(itemId);
             completed++;
             if (needed.Count == 0)
@@ -266,6 +273,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
         {
             needed.Clear();
             inFlightItemId = null;
+            inFlightTechType = null;
             sentAtUtc = default(DateTime);
             observedRecipe = null;
             activeRecipeName = null;
