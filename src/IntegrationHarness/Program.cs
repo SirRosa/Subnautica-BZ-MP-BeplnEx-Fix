@@ -31,6 +31,17 @@ public static class Program
         Builder.prefab = box;
         Builder.ghostModel = new GameObject();
 
+        // Install BOT Benson-like prefixes BEFORE the native Construtor Zero
+        // plugin, preserving the actual multiplayer startup order.
+        var mpHarmony = new Harmony("bot-benson-simulation");
+        var builderTryPlace = typeof(Builder).GetMethod("TryPlace");
+        var identityPatch = new HarmonyMethod(typeof(FakeMultiplayerConstruction)
+            .GetMethod("IdentityPrefix")) { priority = Priority.First };
+        var packetPatch = new HarmonyMethod(typeof(FakeMultiplayerConstruction)
+            .GetMethod("ServerPacketPrefix")) { priority = Priority.Normal };
+        mpHarmony.Patch(builderTryPlace, prefix: identityPatch);
+        mpHarmony.Patch(builderTryPlace, prefix: packetPatch);
+
         plugin.OnEnabled();
         var patches = Harmony.GetAllPatchedMethods().ToList();
         Assert(patches.Any(m => m.Name == "SetPlaceOnSurface"), "Harmony Snap hook installed");
@@ -279,6 +290,13 @@ public static class Program
         Assert(!Builder.TryPlace(), "Initial building action deferred before any resource consumption");
         Assert(Builder.PlacementCalls == 0,
             "Vanilla Builder.TryPlace never runs before all server receipts");
+        Assert(FakeMultiplayerConstruction.PacketsSent == 0,
+            "No BOT Benson construction packet before missing resources are delivered");
+        var patchOrder = Harmony.GetPatchInfo(builderTryPlace).Prefixes
+            .OrderByDescending(p => p.priority).ToList();
+        Assert(patchOrder[0].owner == "sirro.bz.mp.construtor-zero.building" &&
+            patchOrder[0].priority > patchOrder[1].priority,
+            "Construtor ingredient guard runs before MP identity and packet prefixes");
         var autoBuildType = plugin.GetType().Assembly.GetType(
             "Sirro.BZ.MP.ConstrutorZero.AutoBuildCoordinator", true);
         var buildWaiting = autoBuildType.GetProperty("IsWaiting",
@@ -287,23 +305,27 @@ public static class Program
             "Building prefetch waits with original construction pose recorded");
         Time.frameCount++;
         Player.main.Update();
-        Assert(Builder.PlacementCalls == 0,
-            "Builder placement remains deferred until ingredient acknowledgement");
+        Assert(Builder.PlacementCalls == 0 &&
+            FakeMultiplayerConstruction.PacketsSent == 0,
+            "No original placement OR multiplayer packet before ingredient acknowledgement");
         Inventory.main.OnAddItem(buildFirst);
         autoLocker.container.Remove(buildFirst);
         Time.frameCount++;
         Player.main.Update();
-        Assert(Builder.PlacementCalls == 0,
-            "Partial server delivery cannot construct the object");
+        Assert(Builder.PlacementCalls == 0 &&
+            FakeMultiplayerConstruction.PacketsSent == 0,
+            "Partial server delivery cannot send construction packet");
         Inventory.main.OnAddItem(buildSecond);
         Time.frameCount++;
         Player.main.Update();
-        Assert(Builder.PlacementCalls == 1,
-            "Vanilla multiplayer Builder.TryPlace replayed after two ingredient receipts");
+        Assert(FakeMultiplayerConstruction.PacketsSent == 1 &&
+            Builder.PlacementCalls == 0,
+            "One BOT Benson construction request only after two server receipts; vanilla suppressed");
         Assert(!(bool)buildWaiting.GetValue(null), "Auto build state reset after placement");
         Time.frameCount++;
         Player.main.Update();
-        Assert(Builder.PlacementCalls == 1, "Auto build cannot place duplicates");
+        Assert(FakeMultiplayerConstruction.PacketsSent == 1 &&
+            Builder.PlacementCalls == 0, "Auto build cannot emit duplicate multiplayer packets");
 
         Inventory.main.ActualItems.Clear();
         Builder.placePosition = new Vector3(5, 6, 7);
@@ -315,9 +337,10 @@ public static class Program
         Player.main.Update();
         Assert(!(bool)buildWaiting.GetValue(null),
             "Moving the construction ghost cancels delayed placement");
-        Assert(Builder.PlacementCalls == 1 &&
+        Assert(FakeMultiplayerConstruction.PacketsSent == 1 &&
+            Builder.PlacementCalls == 0 &&
             Subnautica.Events.Handlers.Storage.NetworkRequests == countBeforePoseChange,
-            "Changed construction pose sends no further packet or placement");
+            "Changed construction pose sends no further MP packet or placement");
         autoBuildField.SetValue(null, false);
         autoPlaceField.SetValue(null, false);
         Builder.constructableTechType = TechType.None;
@@ -423,9 +446,15 @@ public static class Program
             .Any(m =>
             {
                 var info = Harmony.GetPatchInfo(m);
-                return info != null && (info.Prefixes.Count + info.Postfixes.Count +
-                    info.Transpilers.Count + info.Finalizers.Count) != 0;
-            }), "Harmony hooks removed on disable");
+                return info != null &&
+                    info.Prefixes.Concat(info.Postfixes).Concat(info.Transpilers)
+                        .Concat(info.Finalizers)
+                        .Any(p => p.owner.StartsWith("sirro.bz.mp.construtor-zero",
+                            StringComparison.Ordinal));
+            }), "All Construtor Zero Harmony hooks removed on disable");
+        Assert(Harmony.GetPatchInfo(builderTryPlace).Prefixes
+            .Any(p => p.owner == "bot-benson-simulation"),
+            "Multiplayer Harmony patches survive Construtor Zero unloading");
         Console.WriteLine("ALL " + count + " CONTRACT/SIMULATION CHECKS PASSED");
     }
 }
