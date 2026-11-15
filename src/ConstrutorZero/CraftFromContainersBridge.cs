@@ -34,7 +34,6 @@ namespace Sirro.BZ.MP.ConstrutorZero
         private static object lastRequestedTechType;
         private static int lastTransferFrame = -1;
         private static int installedHooks;
-        private static int lastRequestedItem = 0;
         private static bool enabled;
 
         internal static int RegisteredStorages => Storage.Count;
@@ -208,7 +207,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
                     var origin = kv.Key;
                     var container = kv.Value;
                     if (origin == null || container == null ||
-                        Distance(pos, Get(origin, "position")) > ContainerConfig.RangeMeters)
+                        Distance(pos, Get(Get(origin, "transform") ?? origin, "position")) > ContainerConfig.RangeMeters)
                         continue;
                     var root = Get(origin, "gameObject");
                     if (root == null) continue;
