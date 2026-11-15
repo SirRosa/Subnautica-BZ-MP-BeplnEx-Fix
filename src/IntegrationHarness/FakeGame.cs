@@ -92,9 +92,14 @@ namespace UnityEngine
     }
 }
 public enum TechType { None, Titanium, Copper, Locker, SmallLocker, TestRecipe, DuplicateIngredientRecipe }
-public class ItemsContainer
+public class ItemsContainer : IEnumerable<InventoryItem>
 {
     private readonly List<InventoryItem> contents = new List<InventoryItem>();
+    public int GetItemsCalls;
+    // Real game has both IEnumerable<InventoryItem> and the two-argument
+    // filtered GetItems API. Do not fake away a real supported interface.
+    public IEnumerator<InventoryItem> GetEnumerator() => contents.GetEnumerator();
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     public UnityEngine.Transform tr = new UnityEngine.Transform();
     public int Count => contents.Count;
     public void Add(InventoryItem item) => contents.Add(item);
@@ -104,6 +109,7 @@ public class ItemsContainer
     // Its supported API is GetItems(TechType, List<InventoryItem>).
     public void GetItems(TechType type, List<InventoryItem> result)
     {
+        GetItemsCalls++;
         result.AddRange(contents.Where(i => i.item?.GetTechType() == type));
     }
     public int GetCount(TechType type) => contents.Count(i => i.item?.GetTechType() == type);
