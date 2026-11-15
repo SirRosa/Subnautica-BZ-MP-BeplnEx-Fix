@@ -815,6 +815,26 @@ public static class Program
         Assert(Builder.UpdateAllowed(),
             "Legitimate floor becomes available again after validation restores");
 
+        // A floor-only Locker must use the actual structural floor even
+        // when a nearby existing locker top is the FIRST/closest horizontal
+        // surface along the downward ray. Never attach the floor locker to
+        // another piece of furniture (including with G enabled).
+        Physics.WorldFloorFurniture.gameObject.AddComponent(new Constructable {
+            techType = TechType.Locker, gameObject = Physics.WorldFloorFurniture.gameObject
+        });
+        Physics.FloorFurnitureAvailable = true;
+        Builder.placePosition = new Vector3(0f,8f,0f);
+        Assert(Builder.UpdateAllowed() &&
+            ReferenceEquals(Builder.LastSubmoduleCollider, Physics.WorldFloor),
+            "Ground Locker selects real base floor below another locker's top");
+        Eq(Builder.placePosition.y,1.25f,
+            "Nearby locker top cannot lift a floor-only Locker above real floor");
+        Physics.GroundAvailable = false;
+        Assert(!Builder.UpdateAllowed(),
+            "Existing furniture top without physical floor cannot authorize a floor Locker");
+        Physics.GroundAvailable = true;
+        Physics.FloorFurnitureAvailable = false;
+
         // Only wall-mounted furniture gets a horizontal wall probe when the
         // user's camera is pitched upwards/downwards. Floor availability
         // must never be accepted as wall attachment.
