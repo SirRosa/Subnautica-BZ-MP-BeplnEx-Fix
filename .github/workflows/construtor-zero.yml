@@ -1,4 +1,4 @@
-name: Construtor Zero experimental
+name: Construtor Zero stabilization
 on:
   push:
     branches: [test/construtor-zero-301, test/construtor-zero-cfc-301, test/construtor-zero-stabilization-301]
@@ -41,49 +41,58 @@ jobs:
           Write-Host "Build contract, grid math and multiplayer safety gates: PASS"
       - name: Run simulated multiplayer Builder Harmony integration checks
         run: dotnet run --project src/IntegrationHarness/IntegrationHarness.csproj -c Release --nologo
-      - name: Package first-test candidate without BepInEx, Nautilus or API stubs
+      - name: Package hardened RC without BepInEx, Nautilus or API stubs
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item "src/ConstrutorZero/bin/Release/net472/Sirro.BZ.MP.ConstrutorZero.dll" dist/
           @"
-          CONSTRUTOR ZERO v0.2.1-test -- FIRST CONTROLLED TEST CANDIDATE
+          CONSTRUTOR ZERO v0.3.0-rc1 -- STABILIZATION RELEASE CANDIDATE
           BOT Benson Below Zero Multiplayer 3.0.1. Client plugin only.
-
-          FOR A DISPOSABLE COPY OF THE WORLD ONLY. NOT RELEASED FOR NORMAL PLAY.
-          No gameplay session or 2-client server persistence test has passed yet.
-
-          Install the same DLL on both clients:
+          
+          ALL TESTS IN CI ARE ABI CONTRACT OR SIMULATED NETWORK TESTS.
+          REAL GAMEPLAY, TWO CLIENT SYNCHRONIZATION AND SERVER SAVE RESTORE
+          HAVE NOT BEEN CERTIFIED. USE A BACKED-UP WORLD ONLY.
+          
+          Install identical Sirro.BZ.MP.ConstrutorZero.dll on both clients:
           %APPDATA%\.botbenson\Subnautica Below Zero\Game\Plugins\
-          Do not copy Subnautica.API.Contract or any fake assemblies.
-          Remove prior Construtor Zero / NativeSnapBuilder DLLs first.
-
-          Existing Snap/Building Tweaks are partial, not full original ports.
-          CFC AUTOMATION IS DISABLED BY DEFAULT:
+          Do not copy Subnautica.API, the compile contract or any test fakes.
+          Remove previous Construtor Zero / native SnapBuilder DLLs first.
+          
+          This release hardens:
+          - Exact ItemId + TechType ACK from real multiplayer inventory
+          - One-item-only server transfer; permanent in-session quarantine
+          - Fabricator UI affordability extension without faking inventory
+          - Deferred craft cancellation on Close, OnDeselect, mode/relock/disconnect
+          - Building ghost and permission restoration / safe MP collision checks
+          - Wall/ceiling snap and complete pose rollback on reflection exceptions
+          
+          ALL AUTO TRANSFERS ARE DISABLED BY DEFAULT:
           %APPDATA%\.botbenson\Subnautica Below Zero\Game\Config\ConstrutorZero.Containers.ini
-          1. Start and close the game once to generate the configuration.
-          2. After testing ordinary building/snap, set auto_craft_enabled=true
-             to test fabricator crafting from Locker/SmallLocker.
-          3. Set auto_build_enabled=true for NORMAL FURNITURE ONLY.
-             Keep auto_place_after_prefetch=false for the first session:
-             the game will fetch ingredients, then the user clicks to place.
-          4. manual_prefetch_enabled=true optionally allows F6 recipe prefetch.
-
-          NOT SUPPORTED IN THIS CANDIDATE:
-          - Full Attach to Target / dynamic parent hierarchy
-          - Unsafe Full Override and MP deconstruction override
-          - Craft/build directly from lockers without inventory staging
-          - Atomic server transaction/rollback across all recipe items
-          - Other storage types, base-piece automatic ingredient prefetch
-          - Full SnapBuilder raycast, collider, AimTransform and PlaceTool parity
-
-          Stop immediately if item quantities, placement or world sync disagree.
-          Preserve BOTH client logs and the server log, plus steps and time.
-          Consult FIRST-TEST-301.md in the GitHub branch for a detailed checklist.
+          Turn on auto_craft_enabled=true only after verifying normal snap/build.
+          Turn on auto_build_enabled=true for ordinary furniture, not base pieces.
+          Keep auto_place_after_prefetch=false for initial 2-client tests.
+          
+          KNOWN LIMITATIONS:
+          - No atomic server transaction/rollback for multi-item recipes
+          - Limited to Locker and SmallLocker for network storage prefetch
+          - No full SnapBuilder/Building Tweaks port, dynamic Attach to Target,
+            unsafe Full Override or base-piece CFC automatic building
+          - No multiplayer free-ghost movement after collision check
+          - An ACKed item ID cannot be re-requested until client rejoins
+          - UI availability is advisory: server may reject a stale item
+          
+          See STABILIZATION-301.md for the complete safety and test checklist.
+          Stop immediately if either player detects duplicate/lost items or desync.
+          Preserve the server and BOTH client logs plus a backup of the world.
+          
           Source commit: ${{ github.sha }}
-          "@ | Set-Content "dist/README-FIRST-TEST.txt"
-          Compress-Archive -Path "dist/Sirro.BZ.MP.ConstrutorZero.dll", "dist/README-FIRST-TEST.txt" -DestinationPath "dist/Construtor-Zero-0.2.1-first-test.zip" -Force
+          "@ | Set-Content "dist/README-STABILIZATION.txt"
+          Copy-Item "STABILIZATION-301.md" "dist/STABILIZATION-301.md"
+          Compress-Archive -Path "dist/Sirro.BZ.MP.ConstrutorZero.dll", "dist/README-STABILIZATION.txt", "dist/STABILIZATION-301.md" -DestinationPath "dist/Construtor-Zero-0.3.0-rc1.zip" -Force
+          Get-FileHash "dist/Sirro.BZ.MP.ConstrutorZero.dll" -Algorithm SHA256 | Format-List
+          Get-Item "dist/Construtor-Zero-0.3.0-rc1.zip" | Format-List Name,Length
       - uses: actions/upload-artifact@v4
         with:
-          name: Construtor-Zero-first-test-301
-          path: dist/Construtor-Zero-0.2.1-first-test.zip
+          name: Construtor-Zero-0.3.0-rc1
+          path: dist/Construtor-Zero-0.3.0-rc1.zip
