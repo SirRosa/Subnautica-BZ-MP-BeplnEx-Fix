@@ -50,6 +50,9 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 arguments[2] = postfix;
                 patch.Invoke(harmony, arguments);
                 unpatch = ht.GetMethod("UnpatchSelf", BindingFlags.Public | BindingFlags.Instance);
+                if (unpatch == null)
+                    unpatch = ht.GetMethod("UnpatchAll", BindingFlags.Public | BindingFlags.Instance,
+                        null, new[] { typeof(string) }, null);
                 Trace.Info("ENABLED: " + original + " | grid=" + Options.Grid + ", fine=" + Options.Fine);
             }
             catch (Exception ex)
@@ -65,7 +68,13 @@ namespace Sirro.BZ.MP.ConstrutorZero
         public override void OnDisabled()
         {
             BuildingTweaksBridge.Uninstall();
-            try { unpatch?.Invoke(harmony, null); }
+            try
+            {
+                if (unpatch == null) Trace.Info("UNPATCH_WARNING: no supported Harmony unpatch API");
+                else if (unpatch.Name == "UnpatchAll")
+                    unpatch.Invoke(harmony, new object[] { "sirro.bz.mp.construtor-zero.snap" });
+                else unpatch.Invoke(harmony, null);
+            }
             catch (Exception ex) { Trace.Info("Unpatch warning: " + ex.Message); }
         }
     }
