@@ -483,6 +483,30 @@ public static class Program
         Eq(translatedPosition.x,2.8f,"Local snap x respects moving origin");
         Eq(translatedPosition.z,3.0f,"Local snap z respects moving origin");
 
+        // Force a failure AFTER the position has been rounded. Without a true
+        // boxed Vector3 copy the Harmony postfix leaks an invalid partial pose.
+        var failureHit = new RaycastHit {
+            normal = new Vector3(0f,1f,0f), transform = null
+        };
+        var failurePosition = new Vector3(1.37f,0f,2.74f);
+        var failureRotation = new Quaternion(0f,43f,0f,1f);
+        Quaternion.ThrowOnEuler = true;
+        Builder.SetPlaceOnSurface(failureHit, ref failurePosition, ref failureRotation);
+        Eq(failurePosition.x,1.37f,
+            "Snap failure restores original boxed X instead of leaking rounded pose");
+        Eq(failurePosition.z,2.74f,
+            "Snap failure restores original boxed Z instead of leaking rounded pose");
+        Eq(failureRotation.eulerAngles.y,43f,
+            "Snap failure restores original rotation");
+        Quaternion.ThrowOnEuler = false;
+        var optionsType = plugin.GetType().Assembly.GetType(
+            "Sirro.BZ.MP.ConstrutorZero.Options", true);
+        var enabledField = optionsType.GetField("Enabled",
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+        Assert(!(bool)enabledField.GetValue(null),
+            "Snap is disabled for session after reflection failure");
+        enabledField.SetValue(null, true);
+
         Input.Held.Add(KeyCode.LeftControl);
         Input.Held.Add(KeyCode.LeftAlt);
         Time.frameCount++;
