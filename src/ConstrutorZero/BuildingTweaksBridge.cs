@@ -111,8 +111,16 @@ namespace Sirro.BZ.MP.ConstrutorZero
                         args[1] = Activator.CreateInstance(harmonyMethod, typeof(BuildingTweaksBridge)
                             .GetMethod(prefixName, All));
                     if (postfixName != null)
-                        args[2] = Activator.CreateInstance(harmonyMethod, typeof(BuildingTweaksBridge)
-                            .GetMethod(postfixName, All));
+                    {
+                        // BZ has BOTH bool CheckSpace(...) and void
+                        // CheckSpace(...,List<GameObject>). A void postfix
+                        // cannot override the bool collision decision.
+                        var effectivePostfix = methodName == "CheckSpace" &&
+                            original.ReturnType == typeof(bool)
+                            ? nameof(CheckSpaceBoolPostfix) : postfixName;
+                        args[2] = Activator.CreateInstance(harmonyMethod,
+                            typeof(BuildingTweaksBridge).GetMethod(effectivePostfix, All));
+                    }
                     // Run local ghost transformations before multiplayer's default-priority
                     // Builder.Update postfix serializes ghost data to the network.
                     if (methodName == "Update" && args[2] != null)
@@ -174,10 +182,38 @@ namespace Sirro.BZ.MP.ConstrutorZero
             catch { return true; }
         }
 
-        // MP safety: even if an opt-in override is enabled, do not pretend dynamic parenting
-        // can synchronize. No packet handler is registered for parent changes.
+        // MP never overrides base piece validation or deconstruction. The
+        // multiplayer construction packet forwards vanilla furniture poses
+        // and the other clients create that exact ghost placement. Clipping
+        // is limited to existing Constructable furniture, not arbitrary
+        // parent transforms, terrain edit, or base module coordinates.
+        private static bool IsSafeFurnitureGhost()
+        {
+            try
+            {
+                var builder = Reflect.Type("Builder");
+                var prefab = Value(builder, "prefab");
+                var constructable = Reflect.Type("Constructable");
+                var basePiece = Reflect.Type("ConstructableBase");
+                if (prefab == null || constructable == null || basePiece == null)
+                    return false;
+                var get = prefab.GetType().GetMethod("GetComponent", All,
+                    null, new[] { typeof(Type) }, null);
+                return get != null &&
+                    get.Invoke(prefab, new object[] { basePiece }) == null &&
+                    get.Invoke(prefab, new object[] { constructable }) != null;
+            }
+            catch (Exception e)
+            {
+                LogOnce("FURNITURE_GUARD", e);
+                return false;
+            }
+        }
+
         public static bool IsUnsafePlacementEnabled() =>
-            Cfg.AllowUnsafeWorldChanges && fullOverride && !IsMultiplayer();
+            fullOverride && (IsMultiplayer()
+                ? Cfg.AllowMultiplayerFurnitureClipping && IsSafeFurnitureGhost()
+                : Cfg.AllowUnsafeWorldChanges);
 
         private static void UpdatePostfix()
         {
@@ -199,8 +235,15 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 if (frame != lastKeyFrame)
                 {
                     lastKeyFrame = frame;
-                    if (Down("G")) { fullOverride = !fullOverride; Announce("Full Override " +
-                        (fullOverride ? (Cfg.AllowUnsafeWorldChanges ? "ON" : "BLOCKED (safe MP mode)") : "OFF")); }
+                    if (Down("G"))
+                    {
+                        fullOverride = !fullOverride;
+                        Announce("Full Override " + (fullOverride
+                            ? (IsUnsafePlacementEnabled() ?
+                                "ON (furniture clipping; normal MP network placement)" :
+                                "BLOCKED (base module or config)")
+                            : "OFF"));
+                    }
                     if (Down("T")) { attachToTarget = !attachToTarget; Announce(
                         "Attach to Target " + (attachToTarget ? "requested; disabled for MP sync safety" : "OFF")); }
                     if (Down("B")) { extendedRange = !extendedRange; Announce(
@@ -478,6 +521,11 @@ namespace Sirro.BZ.MP.ConstrutorZero
             catch (Exception e) { LogOnce("OBSTACLES", e); }
         }
 
+        private static void CheckSpaceBoolPostfix(ref bool __result)
+        {
+            if (IsUnsafePlacementEnabled()) __result = true;
+        }
+
         private static void CheckSpacePostfix(object[] __args)
         {
             if (!IsUnsafePlacementEnabled() || __args == null) return;
@@ -493,7 +541,9 @@ namespace Sirro.BZ.MP.ConstrutorZero
 
         private static bool DeconstructionPrefix(ref bool __result)
         {
-            if (!IsUnsafePlacementEnabled()) return true;
+            // Furniture clipping must NEVER imply free multiplayer
+            // deconstruction or override multiplayer's removal protocol.
+            if (IsMultiplayer() || !IsUnsafePlacementEnabled()) return true;
             __result = true;
             return false;
         }
@@ -655,6 +705,10 @@ namespace Sirro.BZ.MP.ConstrutorZero
         internal static bool ExpandedSurfaces = true;
         internal static bool FixDetachedPowerConsumer = true;
         internal static bool AllowUnsafeWorldChanges = false;
+        // Opt-in per placement via G. The global toggle defaults to true
+        // so previously installed configs gain the requested G behaviour.
+        // Structural/base pieces remain excluded regardless of this value.
+        internal static bool AllowMultiplayerFurnitureClipping = true;
         internal static float FreeMoveSpeed = 2f;
 
         internal static void Load()
@@ -674,6 +728,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
                         "expanded_surfaces=true",
                         "fix_detached_power_consumer=true",
                         "allow_unsafe_world_changes=false",
+                        "# G toggles clipping for Constructable furniture only; never base pieces.",
+                        "allow_multiplayer_furniture_clipping=true",
                         "free_move_speed=2.0"
                     });
                 foreach (var line in File.ReadAllLines(path))
@@ -685,6 +741,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
                     if (key == "expanded_surfaces") ExpandedSurfaces = Bool(value);
                     if (key == "fix_detached_power_consumer") FixDetachedPowerConsumer = Bool(value);
                     if (key == "allow_unsafe_world_changes") AllowUnsafeWorldChanges = Bool(value);
+                    if (key == "allow_multiplayer_furniture_clipping")
+                        AllowMultiplayerFurnitureClipping = Bool(value);
                     if (key == "free_move_speed" && float.TryParse(value, NumberStyles.Float,
                         CultureInfo.InvariantCulture, out float speed))
                         FreeMoveSpeed = Math.Max(.1f, Math.Min(10f, speed));
