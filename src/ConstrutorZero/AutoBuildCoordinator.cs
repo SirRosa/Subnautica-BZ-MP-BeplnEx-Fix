@@ -4,252 +4,98 @@ using System.Reflection;
 namespace Sirro.BZ.MP.ConstrutorZero
 {
     /// <summary>
-    /// Defers only the vanilla Builder.TryPlace() call until the server has
-    /// transferred the required ingredients to the player's real inventory.
+    /// Builder.TryPlace creates an UNBUILT Constructable blueprint, not a
+    /// completed craft. Resources are consumed later by BuilderTool/
+    /// Constructable.Construct. Never suppress this action because the
+    /// player lacks ingredients: BOT Benson must send the ordinary blueprint
+    /// placement packet even if the inventory AND every locker are empty.
     ///
-    /// Critical invariant: the construction ghost prefab, position, rotation
-    /// and TechType must be the SAME as at the original click; otherwise do not
-    /// replay anything. This prevents unexpected placement after moving away.
-    /// The actual construction packet remains entirely owned by BOT Benson.
+    /// When auto_build_enabled=true, we may begin a separate, optional
+    /// server-authoritative ingredient prefetch at the deliberate placement
+    /// click. That transfer must NEVER delay, replay or place a blueprint.
+    /// The player still uses the normal construction tool to finish it.
     /// </summary>
     internal static class AutoBuildCoordinator
     {
         private const BindingFlags All = BindingFlags.Public | BindingFlags.NonPublic |
             BindingFlags.Instance | BindingFlags.Static;
-        private static bool waiting;
-        private static bool ready;
-        private static bool bypass;
-        private static DateTime startedUtc;
-        private static object sourcePrefab;
-        private static object sourceTechType;
-        private static float[] initialPosition;
-        private static float[] initialRotation;
 
-        internal static bool IsWaiting => waiting;
+        // Retained for backwards-compatible integration diagnostics; no
+        // blueprint placement transaction is EVER pending in this bridge.
+        internal static bool IsWaiting => false;
 
         internal static bool Prefix(ref bool __result)
         {
-            if (bypass) return true;
-            // An already deferred click must remain blocked even if the game
-            // temporarily changes affordability, placement validity, or mode
-            // before the next Player.Update processes the final ACK.
-            if (waiting)
-            {
-                __result = false;
-                return false;
-            }
+            // IMPORTANT: always return true. Even a network error, missing
+            // materials, an active fabricator craft or a CFC disconnect must
+            // leave normal multiplayer blueprint placement untouched.
             if (!CraftFromContainersBridge.Ready || !ContainerConfig.Enabled ||
                 !ContainerConfig.AutoBuildEnabled || !CraftFromContainersBridge.NetworkActive)
                 return true;
             try
             {
                 var builder = Reflect.Type("Builder");
-                if (builder == null || !(CraftFromContainersBridge.Read(builder, "isPlacing") is bool placing) ||
-                    !placing) return true;
-
-                if (!RecipePrefetch.RequiresIngredientCosts())
-                    return true; // Creative mode uses vanilla free building.
+                if (builder == null ||
+                    !(CraftFromContainersBridge.Read(builder, "isPlacing") is bool placing) ||
+                    !placing ||
+                    !(CraftFromContainersBridge.Read(builder, "canPlace") is bool valid) ||
+                    !valid || !RecipePrefetch.RequiresIngredientCosts())
+                    return true;
 
                 var techType = CraftFromContainersBridge.Read(builder, "constructableTechType");
-                if (techType == null || string.Equals(techType.ToString(), "None",
-                    StringComparison.OrdinalIgnoreCase))
-                    return true;
-
-                // Don't ask the server to move resources for a placement already
-                // rejected by the game's normal collision/surface validation.
-                var validPlacement = CraftFromContainersBridge.Read(builder, "canPlace");
-                if (!(validPlacement is bool) || !(bool)validPlacement)
-                    return true;
-                // A pending construction owns this click, even if another inventory
-                // event has already made the recipe temporarily affordable. Check
-                // the transaction BEFORE the fast path or a second click could
-                // emit an extra BOT Benson construction packet.
-                if (RecipePrefetch.IsActive || AutoCraftCoordinator.IsWaiting)
-                {
-                    __result = false;
-                    return false;
-                }
-                if (RecipePrefetch.InventoryHasCompleteRecipe(techType)) return true;
-
                 var prefab = CraftFromContainersBridge.Read(builder, "prefab");
-                if (prefab == null || IsBasePiece(prefab))
-                    return true; // Base piece packets have separate construction semantics.
-                // Unlike repeated UI hover, a deliberate build click needs
-                // a fresh stock view, otherwise the 850ms preview TTL can
-                // block a just-refilled locker or miss a recently emptied one.
+                if (techType == null || techType.ToString() == "None" ||
+                    prefab == null || IsBasePiece(prefab) ||
+                    RecipePrefetch.IsActive || AutoCraftCoordinator.IsWaiting ||
+                    RecipePrefetch.InventoryHasCompleteRecipe(techType))
+                    return true;
+
                 CraftFromContainersBridge.RefreshAvailabilityBeforePlacement();
-                if (!RecipePrefetch.CanSourceMissingIngredients(techType))
-                {
-                    // A cached UI stock estimate may be temporarily stale,
-                    // and BOT Benson's normal construction prefix sends a
-                    // packet even when this client lacks the recipe. Never
-                    // allow such a packet through on an automated no-stock
-                    // attempt: fail closed, do not spend or place anything.
-                    __result = false;
-                    return false;
-                }
-
-                var position = Snapshot(CraftFromContainersBridge.Read(builder, "placePosition"),
-                    new[] { "x", "y", "z" });
-                var rotation = Snapshot(CraftFromContainersBridge.Read(builder, "placeRotation"),
-                    new[] { "x", "y", "z", "w" });
-                if (position == null || rotation == null ||
-                    !RecipePrefetch.Begin(techType, CraftFromContainersBridge.Report))
-                {
-                    __result = false;
-                    return false;
-                }
-
-                sourcePrefab = prefab;
-                sourceTechType = techType;
-                initialPosition = position;
-                initialRotation = rotation;
-                waiting = true;
-                ready = false;
-                startedUtc = DateTime.UtcNow;
-                __result = false;
-                CraftFromContainersBridge.Report("Building paused pending multiplayer " +
-                    "ingredient delivery; don't move the construction ghost");
-                return false;
+                if (RecipePrefetch.CanSourceMissingIngredients(techType) &&
+                    RecipePrefetch.Begin(techType, CraftFromContainersBridge.Report))
+                    Trace.Info("CFC_BLUEPRINT_PREFETCH: materials requested separately; " +
+                        "normal multiplayer blueprint placement is NOT deferred");
+                // No remote items? Still place the empty blueprint. Never
+                // create/consume materials, suppress a packet or replay click.
             }
             catch (Exception e)
             {
-                CraftFromContainersBridge.Report("Building prefetch skipped: " + e.Message);
-                return true; // vanilla remains authoritative
+                Trace.Info("CFC_BLUEPRINT_PREFETCH_SKIPPED: " +
+                    (e.InnerException ?? e).Message);
             }
+            return true;
         }
 
         internal static void IngredientsDelivered()
         {
-            if (waiting) ready = true;
+            // Inventory receives confirmed resources; this is NOT an ACK
+            // for blueprint placement and must never call Builder.TryPlace.
         }
 
         internal static void BuilderEnded()
         {
-            if (waiting && !bypass)
-                Cancel("Construction tool closed before resources were delivered");
+            // After placing the blueprint the construction tool normally
+            // closes. Continue a server-approved prefetch independently.
         }
 
-        internal static void Tick()
-        {
-            if (!waiting) return;
-            if (!CraftFromContainersBridge.NetworkActive ||
-                DateTime.UtcNow - startedUtc > TimeSpan.FromSeconds(45))
-            {
-                Cancel("Building transaction disconnected or timed out");
-                return;
-            }
-            var builder = Reflect.Type("Builder");
-            if (builder == null || !RecipePrefetch.RequiresIngredientCosts() ||
-                !Equals(sourceTechType, CraftFromContainersBridge.Read(builder, "constructableTechType")) ||
-                !ReferenceEquals(sourcePrefab, CraftFromContainersBridge.Read(builder, "prefab")) ||
-                !(CraftFromContainersBridge.Read(builder, "isPlacing") is bool placing) || !placing ||
-                !SamePose(initialPosition,
-                    Snapshot(CraftFromContainersBridge.Read(builder, "placePosition"),
-                        new[] { "x", "y", "z" }), 0.02f) ||
-                !SamePose(initialRotation,
-                    Snapshot(CraftFromContainersBridge.Read(builder, "placeRotation"),
-                        new[] { "x", "y", "z", "w" }), 0.001f))
-            {
-                Cancel("Construction pose changed; delayed placement was cancelled");
-                return;
-            }
-
-            if (!ready)
-            {
-                if (!RecipePrefetch.IsActive)
-                    Cancel("Ingredient transfer failed or was cancelled");
-                return;
-            }
-            if (!RecipePrefetch.InventoryHasCompleteRecipe(sourceTechType))
-            {
-                Cancel("Required construction ingredients are not in inventory");
-                return;
-            }
-            if (!ContainerConfig.AutoPlaceAfterPrefetch)
-            {
-                CraftFromContainersBridge.Report("Ingredients delivered. Click again " +
-                    "to place the construction yourself.");
-                Reset();
-                return;
-            }
-            if (!(CraftFromContainersBridge.Read(builder, "canPlace") is bool valid) || !valid)
-            {
-                // Leave the transaction pending while vanilla evaluates valid
-                // placement, but never disable collision or validation rules.
-                return;
-            }
-
-            try
-            {
-                var place = builder.GetMethod("TryPlace", All, null,
-                    Type.EmptyTypes, null);
-                if (place == null) throw new MissingMethodException("Builder.TryPlace()");
-                bypass = true;
-                // BOT Benson's Builder.TryPlace prefix sends a network request,
-                // then returns false to prevent original singleplayer placement.
-                // Therefore the return value is NOT a server-acceptance signal.
-                place.Invoke(null, null);
-                CraftFromContainersBridge.Report("Vanilla Builder.TryPlace interceptor " +
-                    "invoked; the multiplayer server will determine placement");
-            }
-            catch (Exception e)
-            {
-                CraftFromContainersBridge.Report("Deferred placement rejected: " +
-                    (e.InnerException ?? e).Message);
-            }
-            finally
-            {
-                Reset();
-            }
-        }
+        internal static void Tick() { } // No ghost-pose/replay state.
 
         internal static void Cancel(string reason)
         {
-            if (!waiting) return;
-            Reset();
-            RecipePrefetch.Cancel(reason, CraftFromContainersBridge.Report);
+            // The caller cancels RecipePrefetch on MP disconnect. Never
+            // cancel unrelated fabricator transfers from this class.
         }
 
-        internal static void Reset()
-        {
-            waiting = ready = bypass = false;
-            sourcePrefab = sourceTechType = null;
-            initialPosition = initialRotation = null;
-            startedUtc = default(DateTime);
-        }
+        internal static void Reset() { }
 
         private static bool IsBasePiece(object prefab)
         {
-            var baseType = Reflect.Type("ConstructableBase");
-            if (baseType == null) return true; // fail closed
-            var method = prefab.GetType().GetMethod("GetComponent", All,
-                null, new[] { typeof(Type) }, null);
-            return method == null || method.Invoke(prefab, new[] { baseType }) != null;
-        }
-
-        private static float[] Snapshot(object vector, string[] fields)
-        {
-            if (vector == null) return null;
-            try
-            {
-                var values = new float[fields.Length];
-                for (int i = 0; i < values.Length; i++)
-                    values[i] = Reflect.Component(vector, fields[i]);
-                return values;
-            }
-            catch { return null; }
-        }
-
-        private static bool SamePose(float[] original, float[] current, float maxDifference)
-        {
-            if (original == null || current == null ||
-                original.Length != current.Length) return false;
-            for (int i = 0; i < original.Length; i++)
-                if (float.IsNaN(current[i]) || float.IsInfinity(current[i]) ||
-                    Math.Abs(original[i] - current[i]) > maxDifference)
-                    return false;
-            return true;
+            // Base-piece construction has a distinct packet protocol.
+            var type = Reflect.Type("ConstructableBase");
+            if (type == null) return true;
+            var get = prefab.GetType().GetMethod("GetComponent", All, null,
+                new[] { typeof(Type) }, null);
+            return get == null || get.Invoke(prefab, new object[] { type }) != null;
         }
     }
 }
