@@ -107,12 +107,12 @@ public class Constructable
     public float placeDefaultDistance = 2f;
     public float placeMaxDistance = 3f;
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public bool DeconstructionAllowed() => false;
+    public bool DeconstructionAllowed(ref string reason) => false;
 }
 public class BaseDeconstructable
 {
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public bool DeconstructionAllowed() => false;
+    public bool DeconstructionAllowed(ref string reason) => false;
 }
 public class PowerConsumer
 {
