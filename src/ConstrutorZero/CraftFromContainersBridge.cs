@@ -27,6 +27,10 @@ namespace Sirro.BZ.MP.ConstrutorZero
             BindingFlags.Static | BindingFlags.Instance;
         private static readonly Dictionary<object, object> Storage = new Dictionary<object, object>();
         private static readonly HashSet<string> Warned = new HashSet<string>();
+        // In MP the bridge must never defer a user action when its essential
+        // hooks are missing. Harmony can report success for unrelated hooks.
+        private static readonly HashSet<string> ActiveHooks =
+            new HashSet<string>(StringComparer.Ordinal);
         // Prevent repeated transfer requests for the same unique item while the
         // authoritative server is processing the previous request.
         private static readonly Dictionary<string, DateTime> PendingItemIds =
@@ -39,6 +43,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
         private static string lastSentItemId;
         internal static string LastRequestedUniqueId => lastSentItemId;
         internal static bool NetworkActive => IsNetworkActive();
+        internal static bool Ready => enabled;
         internal static object Read(object instance, string name) => Get(instance, name);
         internal static void AcknowledgeTransfer(string itemId)
         {
@@ -79,13 +84,34 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 Hook("uGUI_CraftingMenu", "Action", nameof(CraftActionPrefix), null);
                 Hook("uGUI_CraftingMenu", "Close", nameof(CraftMenuClosePrefix), null);
                 Hook("Player", "Update", null, nameof(PlayerUpdate));
+                // Required hooks are the transaction safety boundary:
+                // a missing inventory acknowledgement or update loop would
+                // otherwise leave a pending craft/build in limbo indefinitely.
+                foreach (var required in new[] {
+                    "StorageContainer.Awake",
+                    "Inventory.OnAddItem",
+                    "uGUI_CraftingMenu.Action",
+                    "uGUI_CraftingMenu.Close",
+                    "Player.Update"
+                })
+                {
+                    if (!ActiveHooks.Contains(required))
+                        throw new MissingMethodException(
+                            "CFC_REQUIRED_HOOK_MISSING: " + required);
+                }
                 enabled = true;
                 Trace.Info("CFC_READY: hooks=" + installedHooks +
                     ", range=" + ContainerConfig.RangeMeters + "m, server_transfer_only=true");
-                Trace.Info("CFC_LIMITATION: automatic craft/build consumption is not enabled; " +
-                    "multiplayer storage transfers need server acknowledgement");
+                Trace.Info("CFC_PROTOCOL: IsAllowed=false only means the MP event handler dispatched; " +
+                    "it is NOT a server-accepted transaction");
+                Trace.Info("CFC_LIMITATION: no server recipe-atomicity or rollback; " +
+                    "ingredients remain in inventory if the operation is cancelled");
             }
-            catch (Exception e) { Trace.Info("CFC_INIT_FAILED: " + e); }
+            catch (Exception e)
+            {
+                Trace.Info("CFC_INIT_FAILED: " + e);
+                Uninstall(); // also unpatch any hooks installed before failure
+            }
         }
 
         private static void Hook(string className, string name, string prefix, string postfix)
@@ -106,6 +132,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
                             .GetMethod(postfix, All));
                     patch.Invoke(harmony, args);
                     installedHooks++;
+                    ActiveHooks.Add(className + "." + name);
                 }
                 catch (Exception e)
                 {
@@ -133,6 +160,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
             lastRequestedTechType = null;
             lastPruneFrame = -1;
             installedHooks = 0;
+            ActiveHooks.Clear();
         }
 
         private static void StorageAwake(object __instance)
@@ -201,7 +229,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
 
         private static void InventoryAdded(object __instance, object[] __args)
         {
-            if (!enabled || !ContainerConfig.Enabled || !RecipePrefetch.IsActive)
+            if (!Ready || !ContainerConfig.Enabled || !RecipePrefetch.IsActive)
                 return;
             try
             {
@@ -214,14 +242,18 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 var net = typeof(Subnautica.API.Features.SubnauticaPlugin).Assembly
                     .GetType("Subnautica.API.Features.Network");
                 var id = GetIdentity(Get(net, "Identifier"), gameObject);
-                RecipePrefetch.AcknowledgeInventoryItem(id, Info);
+                // Identity alone is not sufficient. A later packet can reuse
+                // an object wrapper or a mod can replace its TechType.
+                // Confirm that the delivered item is still the requested type.
+                RecipePrefetch.AcknowledgeInventoryItem(
+                    id, GetTechType(pickup), Info);
             }
             catch (Exception e) { Once("CFC_INVENTORY_ACK_FAILED: " + e.Message); }
         }
 
         private static void PlayerUpdate()
         {
-            if (!enabled || !ContainerConfig.Enabled) return;
+            if (!Ready || !ContainerConfig.Enabled) return;
             var unityTimeType = Reflect.Type("UnityEngine.Time");
             var currentFrame = Convert.ToInt32(Get(unityTimeType, "frameCount") ?? 0);
             if (lastPruneFrame < 0 || currentFrame < lastPruneFrame ||
@@ -280,7 +312,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
         /// </summary>
         internal static bool TryRequestOne(object wantedTechType)
         {
-            if (!enabled || wantedTechType == null || !ContainerConfig.Enabled)
+            if (!Ready || wantedTechType == null || !ContainerConfig.Enabled)
                 return false;
             // Server validation is mandatory even for the host. Never bypass it.
             if (!IsNetworkActive()) return false;
