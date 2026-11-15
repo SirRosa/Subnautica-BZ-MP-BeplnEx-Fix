@@ -290,13 +290,34 @@ namespace Sirro.BZ.MP.ConstrutorZero
 
         private static bool IsWholeBasePiece()
         {
-            var builder = Reflect.Type("Builder");
-            var prefab = builder?.GetField("prefab",
-                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)?.GetValue(null);
-            var baseType = Reflect.Type("ConstructableBase");
-            if (prefab == null || baseType == null) return false;
-            return prefab.GetType().GetMethod("GetComponent", new[] { typeof(Type) })
-                ?.Invoke(prefab, new object[] { baseType }) != null;
+            // BZ Builder.prefab is a PROPERTY in supported builds, not
+            // necessarily a field. Using GetField alone silently snapped
+            // ConstructableBase modules (and could invalidate MP ghost poses).
+            // If we cannot identify the prefab safely, leave placement vanilla.
+            try
+            {
+                var builder = Reflect.Type("Builder");
+                if (builder == null) return true;
+                const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic |
+                    BindingFlags.Static;
+                var prefab = builder.GetField("prefab", flags)?.GetValue(null) ??
+                    builder.GetProperty("prefab", flags)?.GetValue(null, null);
+                var baseType = Reflect.Type("ConstructableBase");
+                if (prefab == null || baseType == null) return true;
+                var getComponent = prefab.GetType().GetMethod("GetComponent",
+                    new[] { typeof(Type) });
+                if (getComponent == null) return true;
+                return getComponent.Invoke(prefab, new object[] { baseType }) != null;
+            }
+            catch (Exception ex)
+            {
+                if (!alreadyWarned)
+                {
+                    alreadyWarned = true;
+                    Trace.Info("SNAP_BASE_PREFAB_GUARD: " + ex.Message);
+                }
+                return true;
+            }
         }
 
         private static bool Key(string key, bool down)
