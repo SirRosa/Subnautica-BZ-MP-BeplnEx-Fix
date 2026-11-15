@@ -55,7 +55,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
             if (recipeType == null || IsActive ||
                 !CraftFromContainersBridge.Ready ||
                 !CraftFromContainersBridge.NetworkActive ||
-                !ContainerConfig.Enabled || !ContainerConfig.AutoCraftEnabled ||
+                !ContainerConfig.Enabled ||
+                !(ContainerConfig.AutoCraftEnabled || ContainerConfig.AutoBuildEnabled) ||
                 !RequiresIngredientCosts()) return false;
             try
             {
