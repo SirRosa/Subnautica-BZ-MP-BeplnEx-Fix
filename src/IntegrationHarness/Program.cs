@@ -131,8 +131,8 @@ public static class Program
         Assert(!Inventory.main.DestroyItem(TechType.Titanium, false),
             "Craft resource removal is NOT forged on client");
         locker.ResetContainer();
-        Assert((int)storages.GetValue(null) == 1,
-            "Registry refreshed on actual StorageContainer.ResetContainer");
+        Assert((int)storages.GetValue(null) >= 2,
+            "Registry refreshed without losing already discovered scene lockers");
         // Multi-ingredient, multi-packet prefetch: the recipe is observed but does
         // not cause automatic consumption, and a fake client inventory delivery
         // must carry the SAME server-authorized item ID before the next request.
