@@ -45,9 +45,33 @@ public static class Program
             "Sirro.BZ.MP.ConstrutorZero.CraftFromContainersBridge", true);
         var storages = cfcType.GetProperty("RegisteredStorages",
             BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+        Subnautica.API.Features.Network.Identifier = new FakeIdentifier();
+        Player.main.transform.position = new Vector3(0, 0, 0);
         var locker = new StorageContainer();
+        locker.storageRoot.position = new Vector3(2, 0, 0);
+        locker.storageRoot.gameObject.name = "locker-a";
+        locker.storageRoot.gameObject.AddComponent(new Constructable {
+            techType = TechType.Locker, gameObject = locker.storageRoot.gameObject
+        });
+        locker.container.Add(new InventoryItem {
+            item = new Pickupable { techType = TechType.Titanium,
+                gameObject = new GameObject { name = "item-a" } }
+        });
         locker.Awake();
         Assert((int)storages.GetValue(null) == 1, "Storage registered on Awake");
+        var requestOne = cfcType.GetMethod("TryRequestOne",
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+        Assert((bool)requestOne.Invoke(null, new object[] { TechType.Titanium }),
+            "Server transfer requested using storage event");
+        Assert(Subnautica.Events.Handlers.Storage.NetworkRequests == 1 &&
+            Subnautica.Events.Handlers.Storage.ServerAccepted == 1,
+            "Server accepted transfer for concrete unique item ID");
+        Assert(!(bool)requestOne.Invoke(null, new object[] { TechType.Titanium }),
+            "Duplicate in-flight request prevented");
+        Assert(Subnautica.Events.Handlers.Storage.NetworkRequests == 1,
+            "No duplicate storage packet submitted");
+        Assert(locker.container.Count == 1,
+            "Server transfer does not silently delete local items before ack");
         Assert(Inventory.main.GetPickupCount(TechType.Titanium) == 0,
             "Craft ingredients are NOT forged without server approval");
         Assert(!Inventory.main.DestroyItem(TechType.Titanium),
