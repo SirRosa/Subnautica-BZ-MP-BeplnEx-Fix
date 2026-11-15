@@ -60,7 +60,7 @@ namespace UnityEngine
         public object GetComponentInParent(Type type) => GetComponent(type);
     }
 }
-public enum TechType { None, Titanium, Locker, SmallLocker, TestRecipe }
+public enum TechType { None, Titanium, Copper, Locker, SmallLocker, TestRecipe }
 public class ItemsContainer {}
 public class Ingredient
 {
