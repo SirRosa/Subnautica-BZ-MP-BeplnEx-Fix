@@ -755,6 +755,16 @@ public static class Program
         Eq(Builder.placePosition.y,1.25f,
             "Colliding Locker still displays on ground, not floating");
         Builder.CollisionSpaceAvailable = true;
+        Constructable.AllowPlacementFlags = false;
+        Assert(!Builder.UpdateAllowed(),
+            "Floor fallback never bypasses BZ Constructable.CheckFlags");
+        Constructable.AllowPlacementFlags = true;
+        Physics.WorldFloor.gameObject.AddComponent(new SeaTruckSegment());
+        Assert(!Builder.UpdateAllowed(),
+            "Floor fallback never permits attachment to a Seatruck segment");
+        Physics.WorldFloor.gameObject = new GameObject { name = "world-floor" };
+        Assert(Builder.UpdateAllowed(),
+            "Legitimate floor becomes available again after validation restores");
 
         // Only wall-mounted furniture gets a horizontal wall probe when the
         // user's camera is pitched upwards/downwards. Floor availability
