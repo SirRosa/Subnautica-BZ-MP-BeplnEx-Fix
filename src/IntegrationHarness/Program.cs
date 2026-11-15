@@ -211,6 +211,20 @@ public static class Program
             action = TreeAction.Expand, techType = TechType.TestRecipe });
         Assert(gui.ExpandActions == 1,
             "Category expansion unaffected by automatic crafting interception");
+        CrafterLogic.IsUnlocked = false;
+        int packetCountBeforeLockedRecipe = Subnautica.Events.Handlers.Storage.NetworkRequests;
+        gui.Action(craftNode);
+        Assert(Subnautica.Events.Handlers.Storage.NetworkRequests ==
+            packetCountBeforeLockedRecipe,
+            "Locked blueprint never triggers container transfer packets");
+        var autoTypeForLock = plugin.GetType().Assembly.GetType(
+            "Sirro.BZ.MP.ConstrutorZero.AutoCraftCoordinator", true);
+        var waitingForLock = autoTypeForLock.GetProperty("IsWaiting",
+            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+        Assert(!(bool)waitingForLock.GetValue(null),
+            "Locked blueprint cannot start deferred crafting");
+        CrafterLogic.IsUnlocked = true;
+        gui.CraftActionCalls = 0; // fake vanilla action has no blueprint validation
         gui.Action(craftNode);
         Assert(gui.CraftActionCalls == 0,
             "Craft action postponed rather than attempting free client-side crafting");
