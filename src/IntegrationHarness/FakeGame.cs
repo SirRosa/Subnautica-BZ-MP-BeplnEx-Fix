@@ -69,6 +69,7 @@ namespace UnityEngine
         public GameObject gameObject = new GameObject();
         public Transform parent;
         public Vector3 position;
+        public Vector3 forward = new Vector3(0f, 0f, 1f);
         // Match Unity's translation part of Transform, rather than the old
         // fake identity transform that hid incorrect local/world snapping.
         public Vector3 InverseTransformPoint(Vector3 p) =>
@@ -82,6 +83,51 @@ namespace UnityEngine
         public Vector3 normal { get; set; }
         public Vector3 point { get; set; }
         public Transform transform { get; set; }
+        public Collider collider { get; set; }
+    }
+    public enum QueryTriggerInteraction { Ignore, UseGlobal, Collide }
+    public class LayerMask { public int value = -1; }
+    public class Collider
+    {
+        public GameObject gameObject = new GameObject { name = "world-floor" };
+    }
+    public static class Physics
+    {
+        public static bool GroundAvailable = true;
+        public static bool WallAvailable;
+        public static float FloorHeight = 1.25f;
+        public static readonly Collider WorldFloor = new Collider();
+        public static readonly Collider WorldWall = new Collider {
+            gameObject = new GameObject { name = "world-wall" }
+        };
+        public static int FloorRaycasts;
+        public static int WallRaycasts;
+        public static bool Raycast(Vector3 origin, Vector3 direction,
+            out RaycastHit hit, float maxDistance, int mask,
+            QueryTriggerInteraction query)
+        {
+            hit = default(RaycastHit);
+            if (direction.y < -.75f)
+            {
+                FloorRaycasts++;
+                if (!GroundAvailable || origin.y - FloorHeight < 0f ||
+                    origin.y - FloorHeight > maxDistance) return false;
+                hit = new RaycastHit {
+                    point = new Vector3(origin.x, FloorHeight, origin.z),
+                    normal = new Vector3(0,1,0),
+                    collider = WorldFloor
+                };
+                return true;
+            }
+            WallRaycasts++;
+            if (!WallAvailable) return false;
+            hit = new RaycastHit {
+                point = new Vector3(3f,origin.y,3f),
+                normal = new Vector3(0,0,-1),
+                collider = WorldWall
+            };
+            return true;
+        }
     }
     public class GameObject
     {
@@ -337,8 +383,20 @@ public class Player
 {
     public static Player main = new Player();
     public UnityEngine.Transform transform = new UnityEngine.Transform();
+    public bool IsInSub() => true;
     [MethodImpl(MethodImplOptions.NoInlining)]
     public void Update() { }
+}
+public class FakeMainCamera
+{
+    public UnityEngine.Transform transform = new UnityEngine.Transform {
+        position = new UnityEngine.Vector3(0f, 2.5f, 0f),
+        forward = new UnityEngine.Vector3(0f, 0.6f, 0.8f)
+    };
+}
+public static class MainCamera
+{
+    public static FakeMainCamera camera = new FakeMainCamera();
 }
 public class ConstructableBase
 {
@@ -351,6 +409,8 @@ public class Constructable
     public UnityEngine.GameObject gameObject = new UnityEngine.GameObject();
     public float placeDefaultDistance = 2f;
     public float placeMaxDistance = 3f;
+    public List<SurfaceType> allowedSurfaceTypes =
+        new List<SurfaceType> { SurfaceType.Ground };
     [MethodImpl(MethodImplOptions.NoInlining)]
     public bool DeconstructionAllowed(ref string reason) => false;
 }
@@ -410,6 +470,10 @@ public static class Builder
     public static bool rotationEnabled = true;
     public static float placeDefaultDistance = 2f;
     public static float placeMaxDistance = 3f;
+    public static float placeMinDistance = .2f;
+    public static UnityEngine.LayerMask placeLayerMask = new UnityEngine.LayerMask();
+    public static UnityEngine.GameObject placementTarget;
+    public static bool SimulateSurfaceValidation;
     public static UnityEngine.Vector3 placePosition;
     public static UnityEngine.Quaternion placeRotation;
     public static bool allowedOnConstructables = false, allowedInBase = false,
@@ -427,7 +491,23 @@ public static class Builder
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static bool CreateGhost() => true;
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static bool UpdateAllowed() => false;
+    public static bool UpdateAllowed() =>
+        SimulateSurfaceValidation && CheckAsSubModule();
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static bool CheckAsSubModule() => false;
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static bool CheckTag(UnityEngine.Collider collider) =>
+        collider != null;
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static bool CheckDistance(UnityEngine.Vector3 position,
+        float distance) => distance >= 0;
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static SurfaceType GetSurfaceType(UnityEngine.Vector3 normal) =>
+        normal.y >= .7f ? SurfaceType.Ground :
+        normal.y <= -.7f ? SurfaceType.Ceiling : SurfaceType.Wall;
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static bool CheckSurfaceType(SurfaceType surface) =>
+        allowedSurfaceTypes.Contains(surface);
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static bool ValidateOutdoor(UnityEngine.GameObject go) => false;
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -436,6 +516,10 @@ public static class Builder
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static bool CheckSpace(UnityEngine.Vector3 position, UnityEngine.Quaternion rot,
         List<object> bounds, int mask, object ignore) => CollisionSpaceAvailable;
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static bool CheckSpace(UnityEngine.Vector3 position, UnityEngine.Quaternion rot,
+        List<OrientedBounds> bounds, int mask, UnityEngine.Collider ignore) =>
+            CollisionSpaceAvailable;
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static void CheckSpace(UnityEngine.Vector3 position, UnityEngine.Quaternion rot,
         List<object> bounds, int mask, object ignore, List<UnityEngine.GameObject> obstacles) {}
