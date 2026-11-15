@@ -57,6 +57,10 @@ public static class Program
             "Sirro.BZ.MP.ConstrutorZero.CraftFromContainersBridge", true);
         var storages = cfcType.GetProperty("RegisteredStorages",
             BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+        var cfcReady = cfcType.GetProperty("Ready",
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+        Assert((bool)cfcReady.GetValue(null),
+            "All essential CFC Harmony hooks must exist before activation");
         Subnautica.API.Features.Network.Identifier = new FakeIdentifier();
         Player.main.transform.position = new Vector3(0, 0, 0);
         var locker = new StorageContainer();
@@ -142,6 +146,12 @@ public static class Program
             techType = TechType.Copper, gameObject = new GameObject { name = "intruder" } } });
         Assert((string)inFlight.GetValue(null) == "item-b",
             "Unrelated inventory delivery does not acknowledge pending transfer");
+        var acknowledge = tracker.GetMethod("AcknowledgeInventoryItem",
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+        Assert(!(bool)acknowledge.Invoke(null, new object[] {
+                "item-b", TechType.Copper, log }) &&
+            (string)inFlight.GetValue(null) == "item-b",
+            "Matching ID with wrong TechType must not acknowledge transfer");
         pump.Invoke(null, new object[] { log });
         Assert(Subnautica.Events.Handlers.Storage.NetworkRequests == 2,
             "Second transfer blocked until matching inventory acknowledgement");
@@ -278,6 +288,33 @@ public static class Program
         gui.Close();
         Assert(!(bool)isWaiting.GetValue(null),
             "Menu close cancels staged craft and ingredient queue");
+
+        // Loss of blueprint unlock or no-cost mode must cancel BEFORE another
+        // pending locker item is requested, not merely before UI replay.
+        var resyncMenu = new uGUI_CraftingMenu();
+        resyncMenu.Action(craftNode);
+        Assert((bool)isWaiting.GetValue(null),
+            "Craft request staged for game-mode switch scenario");
+        int packetsBeforeModeChange = Subnautica.Events.Handlers.Storage.NetworkRequests;
+        GameModeManager.CraftingRequiresResources = false;
+        Time.frameCount++;
+        Player.main.Update();
+        Assert(!(bool)isWaiting.GetValue(null) && !(bool)active.GetValue(null) &&
+            Subnautica.Events.Handlers.Storage.NetworkRequests == packetsBeforeModeChange,
+            "No extra locker request or UI replay after switch to free crafting");
+        GameModeManager.CraftingRequiresResources = true;
+
+        var relockedMenu = new uGUI_CraftingMenu();
+        relockedMenu.Action(craftNode);
+        Assert((bool)isWaiting.GetValue(null), "Craft staged before recipe relock");
+        int packetsBeforeRelock = Subnautica.Events.Handlers.Storage.NetworkRequests;
+        CrafterLogic.IsUnlocked = false;
+        Time.frameCount++;
+        Player.main.Update();
+        Assert(!(bool)isWaiting.GetValue(null) && !(bool)active.GetValue(null) &&
+            Subnautica.Events.Handlers.Storage.NetworkRequests == packetsBeforeRelock,
+            "No extra locker request or UI replay after blueprint is relocked");
+        CrafterLogic.IsUnlocked = true;
         Time.frameCount++;
         Player.main.Update();
         Assert(gui.CraftActionCalls == 1,
@@ -427,12 +464,24 @@ public static class Program
         var baseRotation = Quaternion.Euler(new Vector3(0,43f,0));
         Builder.SetPlaceOnSurface(hit, ref basePosition, ref baseRotation);
         Eq(basePosition.x,1.37f,
-            "Base-piece prefab property bypasses position snap");
+            "Base-piece prefab field bypasses position snap");
         Eq(basePosition.z,2.74f,
             "Base-piece position remains original network ghost position");
         Eq(baseRotation.eulerAngles.y,43f,
             "Base-piece rotation remains original network orientation");
         Builder.prefab = box;
+
+        // Local/world transforms are not identity: the grid must be defined
+        // relative to the hit object rather than the scene origin.
+        var translatedHit = new RaycastHit {
+            normal = new Vector3(0,1,0),
+            transform = new Transform { position = new Vector3(1.3f,2f,0.5f) }
+        };
+        var translatedPosition = new Vector3(2.66f,2f,3.24f);
+        var translatedRotation = Quaternion.Euler(new Vector3(0,90f,0));
+        Builder.SetPlaceOnSurface(translatedHit, ref translatedPosition, ref translatedRotation);
+        Eq(translatedPosition.x,2.8f,"Local snap x respects moving origin");
+        Eq(translatedPosition.z,3.0f,"Local snap z respects moving origin");
 
         Input.Held.Add(KeyCode.LeftControl);
         Input.Held.Add(KeyCode.LeftAlt);
