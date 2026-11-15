@@ -71,6 +71,11 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 Hook("Builder", "CreateGhost", null, nameof(CreateGhostPostfix));
                 Hook("Targeting", "GetTarget", nameof(TargetingRangePrefix), null);
                 Hook("Builder", "UpdateAllowed", nameof(UpdateAllowedPrefix), nameof(UpdateAllowedPostfix));
+                // CheckAsSubModule is where vanilla decides whether the
+                // camera ray actually hit an allowed mounting surface.
+                // Correct it BEFORE UpdateAllowed checks the resulting pose.
+                Hook("Builder", "CheckAsSubModule", null,
+                    nameof(CheckAsSubModulePostfix));
                 Hook("Builder", "ValidateOutdoor", null, nameof(AllowedPostfix));
                 Hook("Builder", "GetObstacles", null, nameof(GetObstaclesPostfix));
                 Hook("Builder", "CheckSpace", null, nameof(CheckSpacePostfix));
@@ -167,6 +172,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
             catch (Exception e) { Trace.Info("BUILDING_UNPATCH: " + e.Message); }
             frozen = attachToTarget = fullOverride = extendedRange = false;
             freezeInitialized = false;
+            SurfaceAttachmentBridge.Reset();
             patched = 0;
         }
 
@@ -293,6 +299,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
 
         private static void EndPostfix()
         {
+            SurfaceAttachmentBridge.Reset();
             AutoBuildCoordinator.BuilderEnded();
             frozen = false; freezeInitialized = false;
             attachToTarget = false; fullOverride = false;
@@ -479,9 +486,12 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 SetValue(builder, "allowedInBase", true);
                 SetValue(builder, "allowedInSub", true);
                 SetValue(builder, "allowedOutside", true);
+                // Never mutate a floor-only prefab's allowedSurfaceTypes
+                // while G clips furniture. Clipping should bypass collision,
+                // not turn a floor Locker into a wall/ceiling object.
                 var surfaces = Value(builder, "allowedSurfaceTypes") as IList;
                 var surfaceType = Reflect.Type("SurfaceType");
-                if (surfaces != null && surfaceType != null)
+                if (!IsMultiplayer() && surfaces != null && surfaceType != null)
                 {
                     var wall = Enum.Parse(surfaceType, "Wall");
                     var ceiling = Enum.Parse(surfaceType, "Ceiling");
@@ -502,8 +512,14 @@ namespace Sirro.BZ.MP.ConstrutorZero
 
         private static void UpdateAllowedPostfix(ref bool __result)
         {
-            if (IsUnsafePlacementEnabled()) __result = true;
+            // MP must never fake an overall valid placement when the
+            // ray hit an invalid surface. CheckSpace/GetObstacles already
+            // grant G furniture clipping without bypassing surface checks.
+            if (!IsMultiplayer() && IsUnsafePlacementEnabled()) __result = true;
         }
+
+        private static void CheckAsSubModulePostfix(ref bool __result) =>
+            SurfaceAttachmentBridge.CheckAsSubModulePostfix(ref __result);
 
         private static void AllowedPostfix(ref bool __result)
         {
