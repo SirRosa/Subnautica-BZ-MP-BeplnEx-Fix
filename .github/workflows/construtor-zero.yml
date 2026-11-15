@@ -1,0 +1,59 @@
+name: Construtor Zero experimental
+on:
+  push:
+    branches: [test/construtor-zero-301]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build Construtor Zero
+        run: dotnet build src/ConstrutorZero/ConstrutorZero.csproj -c Release --nologo -warnaserror
+      - name: Verify plugin type, snap grid, safety gates
+        shell: pwsh
+        run: |
+          $out = "src/ConstrutorZero/bin/Release/net472"
+          Add-Type -Path "$out/Subnautica.API.dll"
+          Add-Type -Path "$out/Sirro.BZ.MP.ConstrutorZero.dll"
+          $plugin = [Sirro.BZ.MP.ConstrutorZero.MainPlugin]::new()
+          if ($plugin.PluginType.ToString() -ne "Client") { throw "Wrong plugin type" }
+          if ($plugin.Name -notlike "*Construtor Zero*") { throw "Wrong plugin name" }
+          $math = [Sirro.BZ.MP.ConstrutorZero.SnapMath]
+          if ([Math]::Abs($math::PlaneAxis(1.37, 0, 0.5) - 1.5) -gt 0.00001) { throw "Grid snapping regression" }
+          if ([Math]::Abs($math::PlaneAxis(1.37, 1, 0.5) - 1.37) -gt 0.00001) { throw "Surface normal regression" }
+          if ([Math]::Abs($math::PlaneAxis(-1.37, 0, 0.5) + 1.5) -gt 0.00001) { throw "Negative snapping regression" }
+          if ([Math]::Abs($math::PlaneAxis(1.37, 0, 0.1) - 1.4) -gt 0.00001) { throw "Fine snapping regression" }
+          $building = [Sirro.BZ.MP.ConstrutorZero.BuildingTweaksBridge]
+          $unsafe = $building.GetMethod("IsUnsafePlacementEnabled", [System.Reflection.BindingFlags]"Public, NonPublic, Static")
+          if ($unsafe.Invoke($null, $null)) { throw "Unsafe placement must be disabled by default" }
+          Write-Host "Build contract, grid math and multiplayer safety gates: PASS"
+      - name: Create distribution without BepInEx, Nautilus or API stubs
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item "src/ConstrutorZero/bin/Release/net472/Sirro.BZ.MP.ConstrutorZero.dll" dist/
+          @"
+          Construtor Zero 0.1-alpha -- EXPERIMENTAL
+          Multiplayer BOT Benson 3.0.1 -- client plugin
+
+          1. BACK UP YOUR SAVE.
+          2. Remove Sirro.BZ.MP.NativeSnapBuilder.dll and Subnautica.BZ.MP.PortProbe.dll from Game/Plugins.
+          3. Copy ONLY Sirro.BZ.MP.ConstrutorZero.dll to %APPDATA%/.botbenson/Subnautica Below Zero/Game/Plugins/
+          4. Launch multiplayer, check Game/Logs for [ConstrutorZero].
+          5. Test with two players on a disposable save. Verify placement, rejoin, host restart.
+
+          LIMITATIONS: this is a first combined alpha. Not a full parity port of
+          SnapBuilder and Building Tweaks. Dynamic parent attachment and
+          unsafe override/deconstruction remain gated to prevent desync.
+          DO NOT use on a production save. Game runtime behavior not CI-tested.
+          "@ | Set-Content "dist/README-EXPERIMENTAL.txt"
+          Compress-Archive -Path "dist/Sirro.BZ.MP.ConstrutorZero.dll", "dist/README-EXPERIMENTAL.txt" -DestinationPath "dist/Construtor-Zero-0.1-alpha.zip" -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Construtor-Zero-0.1-alpha
+          path: dist/Construtor-Zero-0.1-alpha.zip
