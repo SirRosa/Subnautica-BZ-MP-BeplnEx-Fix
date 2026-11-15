@@ -150,6 +150,8 @@ public class uGUI_CraftingMenu
     }
     [MethodImpl(MethodImplOptions.NoInlining)]
     public void Close() { Closed = true; }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public void OnDeselect() { Closed = true; }
 }
 public class uGUI_RecipeEntry
 {
