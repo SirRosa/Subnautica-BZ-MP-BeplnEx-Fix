@@ -37,6 +37,23 @@ public static class Program
         Assert(patches.Any(m => m.Name == "UpdateAllowed"), "Harmony validation hook installed");
         Assert(patches.Any(m => m.Name == "GetObstacles"), "Harmony obstacle by-ref hook installed");
         Assert(patches.Any(m => m.Name == "IsPowered"), "Harmony power hook installed");
+        Assert(patches.Any(m => m.DeclaringType == typeof(StorageContainer)),
+            "CraftFromContainers storage registration hooks installed");
+        Assert(patches.Any(m => m.DeclaringType == typeof(Inventory)),
+            "CraftFromContainers inventory observation hooks installed");
+        var cfcType = plugin.GetType().Assembly.GetType(
+            "Sirro.BZ.MP.ConstrutorZero.CraftFromContainersBridge", true);
+        var storages = cfcType.GetProperty("RegisteredStorages",
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+        var locker = new StorageContainer();
+        locker.Awake();
+        Assert((int)storages.GetValue(null) == 1, "Storage registered on Awake");
+        Assert(Inventory.main.GetPickupCount(TechType.Titanium) == 0,
+            "Craft ingredients are NOT forged without server approval");
+        Assert(!Inventory.main.DestroyItem(TechType.Titanium),
+            "Craft resource removal is NOT forged on client");
+        locker.OnDestroy();
+        Assert((int)storages.GetValue(null) == 0, "Storage registry cleaned on Destroy");
 
         var hit = new RaycastHit { normal = new Vector3(0,1,0), transform = new Transform() };
         var pos = new Vector3(1.37f, 0f, 2.74f);
