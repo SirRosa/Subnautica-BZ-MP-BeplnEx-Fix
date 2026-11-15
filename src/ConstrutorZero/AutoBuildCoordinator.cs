@@ -123,7 +123,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 return;
             }
             var builder = Reflect.Type("Builder");
-            if (builder == null ||
+            if (builder == null || !RecipePrefetch.RequiresIngredientCosts() ||
                 !Equals(sourceTechType, CraftFromContainersBridge.Read(builder, "constructableTechType")) ||
                 !ReferenceEquals(sourcePrefab, CraftFromContainersBridge.Read(builder, "prefab")) ||
                 !(CraftFromContainersBridge.Read(builder, "isPlacing") is bool placing) || !placing ||
