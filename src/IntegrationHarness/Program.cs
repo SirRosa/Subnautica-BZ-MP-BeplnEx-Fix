@@ -419,6 +419,11 @@ public static class Program
             BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
         unsafeField.SetValue(null, true);
         Assert(!Builder.UpdateAllowed(),"Unsafe Full Override blocked even when configured true");
+        Assert(Builder.allowedInBase && Builder.allowedOutside &&
+            Builder.allowedOnConstructables && Builder.allowedInSub,
+            "Expanded furniture placement flags applied while ghost is active");
+        Assert(Builder.allowedSurfaceTypes.Contains(SurfaceType.Ceiling),
+            "Expanded ceiling surface available while building furniture");
         Assert(!Builder.ValidateOutdoor(new GameObject()),"Unsafe outdoor override blocked");
         unsafeField.SetValue(null, false);
         string deconstructReason = null;
@@ -445,6 +450,11 @@ public static class Program
         Builder.End();
         Eq(Builder.placeMaxDistance,3f,"Builder range restored on End");
         Eq(constructable.placeMaxDistance,3f,"Constructable range restored on End");
+        Assert(!Builder.allowedInBase && !Builder.allowedOutside &&
+            !Builder.allowedOnConstructables && !Builder.allowedInSub,
+            "Builder.End restores vanilla placement restrictions for next structure");
+        Assert(!Builder.allowedSurfaceTypes.Contains(SurfaceType.Ceiling),
+            "Builder.End removes only the ceiling surface inserted by Construtor Zero");
         Builder.ghostModel = null;
         Targeting.GetTarget(2f, out target, out distance);
         Eq(Targeting.LastMaxDistance,2f,"Normal non-building target distance unchanged");
