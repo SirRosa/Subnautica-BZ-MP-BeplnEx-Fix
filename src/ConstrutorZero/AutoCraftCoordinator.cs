@@ -130,13 +130,9 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 Cancel("Timed out waiting for server-confirmed ingredients");
                 return;
             }
-            if (!ready)
-            {
-                if (!RecipePrefetch.IsActive)
-                    Cancel("Ingredient prefetch was cancelled or failed");
-                return;
-            }
-
+            // Check the context *before* requesting another ingredient. The
+            // player may change game mode, lose recipe unlock, or switch
+            // selected node during a long asynchronous transfer.
             var menu = menuRef?.Target;
             var currentRecipe = node == null ? null :
                 CraftFromContainersBridge.Read(node, "techType");
@@ -148,13 +144,23 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 currentAction == null || !string.Equals(currentAction.ToString(),
                     "Craft", StringComparison.OrdinalIgnoreCase) ||
                 !RecipePrefetch.RequiresIngredientCosts() ||
-                !CraftingRecipeUnlocked(recipeType) ||
-                !RecipePrefetch.InventoryHasCompleteRecipe(recipeType))
+                !CraftingRecipeUnlocked(recipeType))
             {
                 // No silent replay when the UI has reused its recipe node, the
                 // blueprint was revoked, or game mode changed while waiting.
                 // Already delivered materials remain in vanilla inventory.
                 Cancel("Deferred craft no longer matches the original valid recipe");
+                return;
+            }
+            if (!ready)
+            {
+                if (!RecipePrefetch.IsActive)
+                    Cancel("Ingredient prefetch was cancelled or failed");
+                return;
+            }
+            if (!RecipePrefetch.InventoryHasCompleteRecipe(recipeType))
+            {
+                Cancel("Craft was not resumed: inventory changed after delivery");
                 return;
             }
 
