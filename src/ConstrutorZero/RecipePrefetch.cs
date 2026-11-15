@@ -45,6 +45,52 @@ namespace Sirro.BZ.MP.ConstrutorZero
             if (recipe != null) observedRecipe = recipe;
         }
 
+        /// <summary>
+        /// Check UI affordability without touching crafting, inventory counts,
+        /// queued requests or locker contents. Availability is provisional;
+        /// server packet ACKs are still required before crafting.
+        /// </summary>
+        internal static bool CanSourceMissingIngredients(object recipeType)
+        {
+            if (recipeType == null || IsActive ||
+                !CraftFromContainersBridge.Ready ||
+                !CraftFromContainersBridge.NetworkActive ||
+                !ContainerConfig.Enabled || !ContainerConfig.AutoCraftEnabled ||
+                !RequiresIngredientCosts()) return false;
+            try
+            {
+                var data = Reflect.Type("TechData");
+                var get = data?.GetMethods(All).FirstOrDefault(m =>
+                    m.Name == "GetIngredients" && m.GetParameters().Length == 1 &&
+                    m.GetParameters()[0].ParameterType.IsInstanceOfType(recipeType));
+                var ingredients = get?.Invoke(null, new[] { recipeType }) as IEnumerable;
+                var requirements = ingredients == null ? null :
+                    CollectRequirements(ingredients);
+                if (requirements == null || requirements.Count == 0) return false;
+                var inv = CraftFromContainersBridge.Read(
+                    Reflect.Type("Inventory"), "main");
+                var count = inv?.GetType().GetMethods(All).FirstOrDefault(m =>
+                    m.Name == "GetPickupCount" && m.GetParameters().Length == 1 &&
+                    m.GetParameters()[0].ParameterType == recipeType.GetType());
+                if (count == null) return false;
+                int totalMissing = 0;
+                foreach (var pair in requirements)
+                {
+                    int owned = Math.Max(0, Convert.ToInt32(
+                        count.Invoke(inv, new[] { pair.Key }),
+                        CultureInfo.InvariantCulture));
+                    int missing = Math.Max(0, pair.Value - owned);
+                    if (missing > MaxIngredientTransfers ||
+                        totalMissing + missing > MaxIngredientTransfers ||
+                        missing > CraftFromContainersBridge.CountAvailable(pair.Key))
+                        return false;
+                    totalMissing += missing;
+                }
+                return totalMissing > 0;
+            }
+            catch { return false; }
+        }
+
         internal static bool Begin(object recipeType, Action<string> report)
         {
             if (IsActive || recipeType == null || !RequiresIngredientCosts())
