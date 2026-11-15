@@ -74,10 +74,10 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 var prefab = CraftFromContainersBridge.Read(builder, "prefab");
                 if (prefab == null || IsBasePiece(prefab))
                     return true; // Base piece packets have separate construction semantics.
-                // Never start a multi-item staged build if the client can
-                // already prove some required ingredient is unavailable.
-                // This avoids predictable half-delivered recipes; concurrent
-                // server races can still reject an individually requested item.
+                // Unlike repeated UI hover, a deliberate build click needs
+                // a fresh stock view, otherwise the 850ms preview TTL can
+                // block a just-refilled locker or miss a recently emptied one.
+                CraftFromContainersBridge.RefreshAvailabilityBeforePlacement();
                 if (!RecipePrefetch.CanSourceMissingIngredients(techType))
                 {
                     // A cached UI stock estimate may be temporarily stale,
