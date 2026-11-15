@@ -75,6 +75,31 @@ public static class Program
         });
         locker.Awake();
         Assert((int)storages.GetValue(null) == 1, "Storage registered on Awake");
+        // A real ItemsContainer does NOT expose a flat IEnumerable of items.
+        // Existing-world lockers created before our plugin enabled must be
+        // found by the scene scanner, even when Awake was never observed.
+        var sceneLocker = new StorageContainer();
+        sceneLocker.storageRoot.position = new Vector3(4, 0, 0);
+        var owner = new GameObject { name = "scene-locker" };
+        owner.AddComponent(new Constructable {
+            techType = TechType.Locker, gameObject = owner
+        });
+        sceneLocker.container.tr.parent =
+            new Transform { gameObject = owner };
+        sceneLocker.container.Add(new InventoryItem { item = new Pickupable {
+            techType = TechType.Titanium,
+            gameObject = new GameObject { name = "scene-item" } } });
+        Time.frameCount++;
+        Player.main.Update();
+        Assert((int)storages.GetValue(null) >= 2,
+            "Existing locker discovered without a StorageContainer.Awake event");
+        var stockCounter = cfcType.GetMethod("CountAvailable",
+            BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+        Assert((int)stockCounter.Invoke(null,
+            new object[] { TechType.Titanium }) >= 2,
+            "Scene locker with nested storage owner and GetItems API supplies stock");
+        sceneLocker.container.Clear();
+
         var requestOne = cfcType.GetMethod("TryRequestOne",
             BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
         locker.storageRoot.position = new Vector3(250, 0, 0);
@@ -518,6 +543,22 @@ public static class Program
         Eq(pos.x,1.5f,"Native snap x");
         Eq(pos.z,2.5f,"Native snap z");
         Eq(rot.eulerAngles.y,45f,"Rotation grid 45 degrees");
+        var groundHit = new RaycastHit {
+            normal = new Vector3(0,1,0), transform = null };
+        var groundPos = new Vector3(1.37f,13.337f,2.74f);
+        var groundRotation = Quaternion.Euler(new Vector3(0,43f,0));
+        Builder.SetPlaceOnSurface(groundHit, ref groundPos, ref groundRotation);
+        Eq(groundPos.y,13.337f,
+            "Ground grid never rounds surface altitude up or down");
+        Eq(groundPos.x,1.5f,"Ground grid still rounds tangent X");
+        Eq(groundPos.z,2.5f,"Ground grid still rounds tangent Z");
+        var slopeHit = new RaycastHit { normal = new Vector3(.3f,.95f,.1f), transform = null };
+        var slopePos = new Vector3(1.37f,13.337f,2.74f);
+        Builder.SetPlaceOnSurface(slopeHit, ref slopePos, ref groundRotation);
+        var slopeHeightDot = (slopePos.x-1.37f)*.3f +
+            (slopePos.y-13.337f)*.95f + (slopePos.z-2.74f)*.1f;
+        Assert(Math.Abs(slopeHeightDot) < .0002f,
+            "Sloped ground displacement stays on the original tangent plane");
 
         var wallHit = new RaycastHit { normal = new Vector3(1,0,0), transform = null };
         var wallPosition = new Vector3(0f,1.37f,2.74f);
@@ -525,6 +566,8 @@ public static class Program
         Builder.SetPlaceOnSurface(wallHit, ref wallPosition, ref wallRotation);
         Eq(wallRotation.eulerAngles.y,43f,
             "Wall ghost is not incorrectly rotated by floor snap");
+        Eq(wallPosition.x,0f,"Wall clipping plane depth is not quantized");
+        Eq(wallPosition.y,1.5f,"Wall tangent Y snaps to grid");
         var ceilingHit = new RaycastHit {
             normal = new Vector3(0,-1f,0), transform = null
         };
@@ -534,6 +577,7 @@ public static class Program
             ref ceilingPosition, ref ceilingRotation);
         Eq(ceilingRotation.eulerAngles.y,43f,
             "Ceiling ghost is not incorrectly rotated by floor snap");
+        Eq(ceilingPosition.y,0f,"Ceiling surface height is not rounded");
 
         // Regression: Builder.prefab is a field in the real game; it may be
         // a property in the real BZ game; base modules must never be snapped.
@@ -602,12 +646,29 @@ public static class Program
         Input.Down.Add(KeyCode.G);
         Builder.Update();
         Input.Clear();
-        // Even an explicit unsafe setting must remain blocked while connected to MP.
+        // G now allows *furniture-only* clipping using the ordinary BOT
+        // Benson construction packet. Structural base pieces remain protected.
         var cfg = plugin.GetType().Assembly.GetType("Sirro.BZ.MP.ConstrutorZero.Cfg", true);
         var unsafeField = cfg.GetField("AllowUnsafeWorldChanges",
             BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+        var clipField = cfg.GetField("AllowMultiplayerFurnitureClipping",
+            BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+        clipField.SetValue(null, true);
         unsafeField.SetValue(null, true);
-        Assert(!Builder.UpdateAllowed(),"Unsafe Full Override blocked even when configured true");
+        Assert(Builder.UpdateAllowed(), "G allows furniture placement despite collision");
+        Assert(Builder.ValidateOutdoor(new GameObject()),
+            "G permits furniture clipping against restricted walls");
+        Builder.CollisionSpaceAvailable = false;
+        Assert(Builder.CheckSpace(new Vector3(0,0,0),
+            Quaternion.Euler(new Vector3(0,0,0)), new List<object>(), 0, null),
+            "G overrides boolean CheckSpace for furniture overlap");
+        Builder.CollisionSpaceAvailable = true;
+        var obstaclesClipping = new List<GameObject> { new GameObject() };
+        Builder.GetObstacles(new Vector3(0,0,0),
+            Quaternion.Euler(new Vector3(0,0,0)), new List<object>(),
+            item => true, obstaclesClipping);
+        Assert(obstaclesClipping.Count == 0,
+            "G clears furniture overlap obstacles from the actual results list");
         Assert(Builder.allowedInBase && Builder.allowedOutside &&
             Builder.allowedOnConstructables && Builder.allowedInSub,
             "Expanded furniture placement flags applied while ghost is active");
@@ -619,7 +680,13 @@ public static class Program
         var changingBasePrefab = new GameObject();
         changingBasePrefab.AddComponent(new ConstructableBase());
         Builder.prefab = changingBasePrefab;
-        Builder.UpdateAllowed();
+        Assert(!Builder.UpdateAllowed(),
+            "G never overrides base-module placement checks");
+        Builder.CollisionSpaceAvailable = false;
+        Assert(!Builder.CheckSpace(new Vector3(0,0,0),
+            Quaternion.Euler(new Vector3(0,0,0)), new List<object>(), 0, null),
+            "G never overrides base-module collisions");
+        Builder.CollisionSpaceAvailable = true;
         Assert(!Builder.allowedInBase && !Builder.allowedOutside &&
             !Builder.allowedSurfaceTypes.Contains(SurfaceType.Ceiling),
             "Base ghost immediately restores vanilla global Builder permissions");
@@ -644,11 +711,18 @@ public static class Program
         Builder.UpdateAllowed();
         Assert(Builder.allowedInBase && Builder.allowedOutside,
             "Re-enabling expanded surfaces takes effect only for valid furniture");
-        Assert(!Builder.ValidateOutdoor(new GameObject()),"Unsafe outdoor override blocked");
-        unsafeField.SetValue(null, false);
+        Assert(Builder.ValidateOutdoor(new GameObject()),
+            "G continues to allow furniture clipping after ghost changes");
         string deconstructReason = null;
         Assert(!constructable.DeconstructionAllowed(ref deconstructReason),
-            "Unsafe deconstruction blocked with real ref string signature");
+            "G never overrides multiplayer deconstruction protection");
+        Time.frameCount++;
+        Input.Down.Add(KeyCode.G);
+        Builder.Update();
+        Input.Clear();
+        Assert(!Builder.ValidateOutdoor(new GameObject()),
+            "Pressing G again restores normal collision rules");
+        unsafeField.SetValue(null, false);
         var o = new List<GameObject> { new GameObject() };
         Builder.GetObstacles(new Vector3(0,0,0), Quaternion.Euler(new Vector3(0,0,0)),
             new List<object>(), item => true, o);
