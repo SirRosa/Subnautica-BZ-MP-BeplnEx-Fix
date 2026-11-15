@@ -38,6 +38,9 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 if (builder == null || !(CraftFromContainersBridge.Read(builder, "isPlacing") is bool placing) ||
                     !placing) return true;
 
+                if (!RecipePrefetch.RequiresIngredientCosts())
+                    return true; // Creative mode uses vanilla free building.
+
                 var techType = CraftFromContainersBridge.Read(builder, "constructableTechType");
                 if (techType == null || string.Equals(techType.ToString(), "None",
                     StringComparison.OrdinalIgnoreCase))
