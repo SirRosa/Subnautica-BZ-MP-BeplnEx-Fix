@@ -203,7 +203,11 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 if (!Options.Enabled || IsWholeBasePiece()) return;
                 var hit = __args[0];
                 var position = __args[1];
-                var before = position;
+                // Vector3 is a value type. Reflection SetValue mutates the same
+                // boxed instance; saving 'before = position' would alias it.
+                float beforeX = Reflect.Component(position, "x");
+                float beforeY = Reflect.Component(position, "y");
+                float beforeZ = Reflect.Component(position, "z");
                 var vectorType = position.GetType();
                 var target = hit.GetType().GetProperty("transform")?.GetValue(hit, null);
                 var normal = hit.GetType().GetProperty("normal")?.GetValue(hit, null);
@@ -227,9 +231,9 @@ namespace Sirro.BZ.MP.ConstrutorZero
                     SnapFloorRotation(__args, vectorType, hit);
                 if (!firstSnapLogged)
                 {
-                    var deltaX = Math.Abs(Reflect.Component(before, "x") - Reflect.Component(position, "x"));
-                    var deltaY = Math.Abs(Reflect.Component(before, "y") - Reflect.Component(position, "y"));
-                    var deltaZ = Math.Abs(Reflect.Component(before, "z") - Reflect.Component(position, "z"));
+                    var deltaX = Math.Abs(beforeX - Reflect.Component(position, "x"));
+                    var deltaY = Math.Abs(beforeY - Reflect.Component(position, "y"));
+                    var deltaZ = Math.Abs(beforeZ - Reflect.Component(position, "z"));
                     if (deltaX + deltaY + deltaZ > .001f)
                     {
                         firstSnapLogged = true;
