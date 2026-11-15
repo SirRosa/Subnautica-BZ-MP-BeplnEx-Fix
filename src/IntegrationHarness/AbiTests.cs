@@ -23,6 +23,11 @@ public static class AbiTests
             setSurface.GetParameters()[2].ParameterType == typeof(Quaternion).MakeByRefType(),
             "Actual Builder.SetPlaceOnSurface ABI reflected in test fixture");
 
+        assert(typeof(OrientedBounds).GetField("position", All) != null &&
+            typeof(OrientedBounds).GetField("extents", All) != null &&
+            typeof(OrientedBounds).GetMethod("GetCorners", All) == null,
+            "Native OrientedBounds exposes position/extents; GetCorners is a third-party extension");
+
         var submodule = typeof(Builder).GetMethod("CheckAsSubModule", All);
         assert(submodule != null && submodule.ReturnType == typeof(bool) &&
             submodule.GetParameters().Length == 1 &&
