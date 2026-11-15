@@ -79,7 +79,15 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 // This avoids predictable half-delivered recipes; concurrent
                 // server races can still reject an individually requested item.
                 if (!RecipePrefetch.CanSourceMissingIngredients(techType))
-                    return true;
+                {
+                    // A cached UI stock estimate may be temporarily stale,
+                    // and BOT Benson's normal construction prefix sends a
+                    // packet even when this client lacks the recipe. Never
+                    // allow such a packet through on an automated no-stock
+                    // attempt: fail closed, do not spend or place anything.
+                    __result = false;
+                    return false;
+                }
 
                 var position = Snapshot(CraftFromContainersBridge.Read(builder, "placePosition"),
                     new[] { "x", "y", "z" });
@@ -87,7 +95,10 @@ namespace Sirro.BZ.MP.ConstrutorZero
                     new[] { "x", "y", "z", "w" });
                 if (position == null || rotation == null ||
                     !RecipePrefetch.Begin(techType, CraftFromContainersBridge.Report))
-                    return true;
+                {
+                    __result = false;
+                    return false;
+                }
 
                 sourcePrefab = prefab;
                 sourceTechType = techType;
