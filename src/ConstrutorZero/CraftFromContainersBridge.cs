@@ -776,6 +776,16 @@ namespace Sirro.BZ.MP.ConstrutorZero
             uiCacheCreatedUtc = default(DateTime);
         }
 
+        internal static void RefreshAvailabilityBeforePlacement()
+        {
+            // An actual Build click (unlike UI hover) must not use up to
+            // 850ms-old advisory stock. A stale negative preflight could
+            // block a newly stocked locker, and a stale positive one could
+            // stage a partial recipe. Pay for one fresh snapshot on the
+            // deliberate placement action only.
+            InvalidateUiCache();
+        }
+
         private static void RefreshUiStockSnapshot()
         {
             UiAvailableCache.Clear();
