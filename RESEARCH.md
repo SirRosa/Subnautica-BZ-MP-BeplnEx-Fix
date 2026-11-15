@@ -33,3 +33,11 @@ Source of the DLL reference audit: user-supplied binaries. These are not bundled
 ## Safety / intellectual property
 
 No third-party DLLs or original multiplayer binaries should be committed to a public repository. The `src/Contracts` API assembly is a **minimal compile-time-only stub**, not a distributable game/launcher binary. No existing third-party source has been copied into this repository.
+
+## Official plugin policy — critical loader limitation
+
+The official [plugin documentation](https://docs.subnauticamultiplayer.com/overview/plugins) explicitly states that **only selected plugins are officially compatible** and instructs installation through `Launcher -> Plugins`. It does not describe arbitrary user-authored DLL installation.
+
+Therefore **a successful compile against the API contract does not establish that the current launcher accepts third-party DLLs**. There may be a plugin registry, checksum, entitlement, or activation mechanism. The supplied `Subnautica.API.dll` contains `PluginManager.RefreshPlugins`, `IsValidPlugin`, and `LoadPlugin`; metadata inspection alone does not prove their runtime authorization policy.
+
+The probe should be used only as a controlled opt-in experiment on a backed-up installation, not presented as a functioning mod. If loading is blocked, development must first investigate the actual loader and permitted extension points; porting gameplay code before that is premature.
