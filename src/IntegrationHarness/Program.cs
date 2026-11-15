@@ -217,11 +217,34 @@ public static class Program
         var gui = new uGUI_CraftingMenu();
         var craftNode = new uGUI_CraftingMenu.Node {
             action = TreeAction.Craft, techType = TechType.TestRecipe };
+        // UI-only: two real locker units can advertise a craftable recipe
+        // without forging ANY local inventory resources or network request.
+        int beforeUi = Subnautica.Events.Handlers.Storage.NetworkRequests;
+        Assert(Inventory.main.GetPickupCount(TechType.Titanium) == 0,
+            "Fabricator has zero local recipe materials before UI override");
+        Assert(gui.ActionAvailable(craftNode),
+            "Fabricator UI advertises complete nearby locker stock");
+        Assert(Inventory.main.GetPickupCount(TechType.Titanium) == 0 &&
+            Subnautica.Events.Handlers.Storage.NetworkRequests == beforeUi,
+            "UI-only availability cannot mutate inventory or send a packet");
+        Assert(gui.ActionAvailable(new uGUI_CraftingMenu.Node {
+                action = TreeAction.Expand, techType = TechType.TestRecipe }),
+            "Fabricator category navigation stays available");
+        autoLocker.container.Remove(fifth);
+        Time.frameCount++;  // invalidate per-frame advisory availability cache
+        Assert(!gui.ActionAvailable(craftNode),
+            "Insufficient locker ingredients do not unlock fabricator recipe");
+        autoLocker.container.Add(fifth);
+        Time.frameCount++;
+        Assert(gui.ActionAvailable(craftNode),
+            "Fabricator availability refreshes on newly stocked locker");
         gui.Action(new uGUI_CraftingMenu.Node {
             action = TreeAction.Expand, techType = TechType.TestRecipe });
         Assert(gui.ExpandActions == 1,
             "Category expansion unaffected by automatic crafting interception");
         CrafterLogic.IsUnlocked = false;
+        Assert(!gui.ActionAvailable(craftNode),
+            "Locker stock never unlocks a locked blueprint");
         int packetCountBeforeLockedRecipe = Subnautica.Events.Handlers.Storage.NetworkRequests;
         gui.Action(craftNode);
         Assert(Subnautica.Events.Handlers.Storage.NetworkRequests ==
@@ -235,6 +258,8 @@ public static class Program
             "Locked blueprint cannot start deferred crafting");
         CrafterLogic.IsUnlocked = true;
         GameModeManager.CraftingRequiresResources = false;
+        Assert(gui.ActionAvailable(craftNode),
+            "Creative mode remains available via vanilla fabricator logic");
         int packetsBeforeCreative = Subnautica.Events.Handlers.Storage.NetworkRequests;
         gui.Action(craftNode);
         Assert(!(bool)waitingForLock.GetValue(null) &&
@@ -250,6 +275,8 @@ public static class Program
         var isWaiting = autoType.GetProperty("IsWaiting",
             BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
         Assert((bool)isWaiting.GetValue(null), "Craft waits for server ingredient delivery");
+        Assert(!gui.ActionAvailable(craftNode),
+            "UI cannot advertise another deferred craft while one is active");
         Time.frameCount++;
         Player.main.Update();
         Assert(Subnautica.Events.Handlers.Storage.NetworkRequests == 4,
@@ -270,6 +297,12 @@ public static class Program
         Assert(!(bool)isWaiting.GetValue(null), "Auto craft state reset after replay");
         Assert(Inventory.main.GetPickupCount(TechType.Titanium) == 2,
             "Auto craft uses real inventory rather than synthesizing materials");
+        Assert(gui.ActionAvailable(craftNode),
+            "Fabricator availability returns to vanilla after real inventory delivery");
+        // The inventory ACK is not proof that the locker UI has caught up
+        // with the packet. A stale locker object must not re-request that ID.
+        Assert(!(bool)requestOne.Invoke(null, new object[] { TechType.Titanium }),
+            "ACKed item IDs cannot be requested again from stale locker state");
 
         // Closing the menu must cancel deferred actions without crafting anything.
         Inventory.main.ActualItems.Clear();
