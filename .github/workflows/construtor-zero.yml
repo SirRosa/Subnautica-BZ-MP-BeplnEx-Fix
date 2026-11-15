@@ -39,6 +39,8 @@ jobs:
           if ([Math]::Abs($terrain[1] - 13.337) -gt 0.00001) { throw "Ground altitude must stay on hit plane" }
           if ([Math]::Abs($terrain[0] - 1.5) -gt 0.00001) { throw "Ground tangent snap regression" }
           if ([Math]::Abs($math::GroundPivotHeight(3.2, -0.95) - 4.15) -gt 0.00001) { throw "Floor contact height regression" }
+          $wall = $math::WorldWallPosition(1.37, 2.27, 2.5, 0, 0, -1, 0.5)
+          if ([Math]::Abs($wall[0] - 1.5) -gt 0.00001 -or [Math]::Abs($wall[1] - 2.5) -gt 0.00001 -or [Math]::Abs($wall[2] - 2.5) -gt 0.00001) { throw "World wall grid regression" }
           $building = $plugin.GetType().Assembly.GetType("Sirro.BZ.MP.ConstrutorZero.BuildingTweaksBridge", $true)
           $unsafe = $building.GetMethod("IsUnsafePlacementEnabled", [System.Reflection.BindingFlags]"Public, NonPublic, Static")
           if ($unsafe.Invoke($null, $null)) { throw "Unsafe placement must be disabled by default" }
@@ -51,7 +53,7 @@ jobs:
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item "src/ConstrutorZero/bin/Release/net472/Sirro.BZ.MP.ConstrutorZero.dll" dist/
           @"
-          CONSTRUTOR ZERO v0.3.4-rc5 -- PHYSICAL FLOOR/WALL SURFACE LOCK CANDIDATE
+          CONSTRUTOR ZERO v0.3.5-rc6 -- PITCH-INDEPENDENT FLOOR AND WORLD-ANCHORED WALL GRID
           BOT Benson Below Zero Multiplayer 3.0.1. Client plugin only.
           
           ALL TESTS IN CI ARE ABI CONTRACT OR SIMULATED NETWORK TESTS.
@@ -89,6 +91,12 @@ jobs:
             valid mounting surface and collision instead of faking placement success
           - With G: clip furniture obstacles but NEVER allow floating furniture
           - Hold last ground/wall position visually (invalid for building) if ray is lost
+          - Always verify floor-only furniture's actual floor, EVEN when the
+            vanilla camera ray already returns success while looking down
+          - Prefer structural walls behind existing lockers using Physics.RaycastAll
+          - Preserve secondary attachment to furniture only when Builder flags allow it
+          - Snap wall furniture to a fixed world-space grid instead of moving
+            per-collider local coordinates; walking forward/back keeps the grid static
           
           ALL AUTO TRANSFERS ARE DISABLED BY DEFAULT:
           %APPDATA%\.botbenson\Subnautica Below Zero\Game\Config\ConstrutorZero.Containers.ini
@@ -112,20 +120,21 @@ jobs:
           - An ACKed item ID cannot be re-requested until client rejoins
           - UI availability is advisory: server may reject a stale item
           
-          See SURFACE-LOCK-301.md for current install and mandatory 2-client tests.
+          See SURFACE-GRID-301.md for the latest root causes and mandatory tests.
+          See SURFACE-LOCK-301.md for prior surface-lock work.
           See PLACEMENT-UI-301.md for prior CFC UI improvements.
           See STABILIZATION-301.md for background limitations.
           Stop immediately if either player detects duplicate/lost items or desync.
           Preserve the server and BOTH client logs plus a backup of the world.
           
           Source commit: ${{ github.sha }}
-          "@ | Set-Content "dist/README-SURFACE-LOCK.txt"
+          "@ | Set-Content "dist/README-SURFACE-GRID.txt"
+          Copy-Item "SURFACE-GRID-301.md" "dist/SURFACE-GRID-301.md"
           Copy-Item "SURFACE-LOCK-301.md" "dist/SURFACE-LOCK-301.md"
-          Copy-Item "PLACEMENT-UI-301.md" "dist/PLACEMENT-UI-301.md"
-          Compress-Archive -Path "dist/Sirro.BZ.MP.ConstrutorZero.dll", "dist/README-SURFACE-LOCK.txt", "dist/SURFACE-LOCK-301.md", "dist/PLACEMENT-UI-301.md" -DestinationPath "dist/Construtor-Zero-0.3.4-rc5.zip" -Force
+          Compress-Archive -Path "dist/Sirro.BZ.MP.ConstrutorZero.dll", "dist/README-SURFACE-GRID.txt", "dist/SURFACE-GRID-301.md", "dist/SURFACE-LOCK-301.md" -DestinationPath "dist/Construtor-Zero-0.3.5-rc6.zip" -Force
           Get-FileHash "dist/Sirro.BZ.MP.ConstrutorZero.dll" -Algorithm SHA256 | Format-List
-          Get-Item "dist/Construtor-Zero-0.3.4-rc5.zip" | Format-List Name,Length
+          Get-Item "dist/Construtor-Zero-0.3.5-rc6.zip" | Format-List Name,Length
       - uses: actions/upload-artifact@v4
         with:
-          name: Construtor-Zero-0.3.4-rc5
-          path: dist/Construtor-Zero-0.3.4-rc5.zip
+          name: Construtor-Zero-0.3.5-rc6
+          path: dist/Construtor-Zero-0.3.5-rc6.zip
