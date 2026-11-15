@@ -37,7 +37,13 @@ namespace Sirro.BZ.MP.ConstrutorZero
             var action = CraftFromContainersBridge.Read(requestedNode, "action");
             if (action == null || !string.Equals(action.ToString(), "Craft",
                 StringComparison.OrdinalIgnoreCase))
-                return true; // Expand/collapse/menu actions must never be intercepted.
+            {
+                // Navigating to a different category invalidates the previously
+                // staged action. The ordinary menu operation still executes.
+                if (waiting)
+                    Cancel("Crafting category changed; deferred recipe cancelled");
+                return true;
+            }
 
             if (waiting)
             {
