@@ -73,6 +73,11 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 Hook("BaseDeconstructable", "DeconstructionAllowed", nameof(DeconstructionPrefix), null);
                 Hook("Builder", "CanDestroyObject", null, nameof(CanDestroyObjectPostfix));
                 Hook("PowerConsumer", "IsPowered", nameof(PowerConsumerPrefix), null);
+                // Original Tobey SnapBuilder prevents PlaceTool rotation input
+                // from simultaneously triggering quick-slot hotkeys.
+                Hook("PlaceTool", "LateUpdate", null, nameof(PlaceToolLateUpdatePostfix));
+                Hook("PlaceTool", "OnHolster", null, nameof(PlaceToolExitPostfix));
+                Hook("PlaceTool", "OnPlace", null, nameof(PlaceToolExitPostfix));
                 Trace.Info("BUILDING_PATCHES_INSTALLED=" + patched +
                     " | multiplayer=" + IsMultiplayer() +
                     " | unsafeWorldChanges=" + Cfg.AllowUnsafeWorldChanges);
@@ -137,6 +142,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
         {
             try
             {
+                SetQuickSlotHotkeysIgnored(false);
                 RestoreRanges();
                 if (unpatch == null) Trace.Info("BUILDING_UNPATCH_WARNING: no Harmony unpatch API");
                 else if (unpatch.Name == "UnpatchAll")
@@ -446,6 +452,36 @@ namespace Sirro.BZ.MP.ConstrutorZero
                     .Any(term => name.Contains(term))) __result = false;
             }
             catch (Exception e) { LogOnce("CAN_DESTROY", e); }
+        }
+
+        private static void PlaceToolLateUpdatePostfix(object __instance)
+        {
+            if (__instance == null) return;
+            try
+            {
+                var isUsing = Value(__instance, "usingPlayer") != null;
+                var isRotating = Value(__instance, "rotationEnabled");
+                bool reserveHotkeys = isUsing && Options.Enabled &&
+                    Options.RotationEnabled && isRotating is bool && (bool)isRotating;
+                SetQuickSlotHotkeysIgnored(reserveHotkeys);
+            }
+            catch (Exception e) { LogOnce("PLACETOOL_HOTKEYS", e); }
+        }
+
+        private static void PlaceToolExitPostfix() => SetQuickSlotHotkeysIgnored(false);
+
+        private static void SetQuickSlotHotkeysIgnored(bool ignored)
+        {
+            try
+            {
+                var inv = Value(Reflect.Type("Inventory"), "main");
+                var quickSlots = Value(inv, "quickSlots");
+                if (quickSlots == null) return;
+                var method = quickSlots.GetType().GetMethod("SetIgnoreHotkeyInput",
+                    All, null, new[] { typeof(bool) }, null);
+                method?.Invoke(quickSlots, new object[] { ignored });
+            }
+            catch (Exception e) { LogOnce("QUICKSLOTS", e); }
         }
 
         private static bool PowerConsumerPrefix(object __instance, ref bool __result)
