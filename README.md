@@ -1,7 +1,7 @@
 # Construtor Zero — stabilized release candidate for Below Zero MP 3.0.1
 
-**v0.3.5-rc6: corrected floor anchor when looking down, prioritizes real walls over nearby lockers, and uses a fixed world-space wall grid. REQUIRES REAL TWO-CLIENT RETEST.**
-See [SURFACE-GRID-301.md](SURFACE-GRID-301.md) for the latest camera-pitch, wall priority and static world-grid fixes and mandatory test checklist. Background on the prior floor/wall attachment work: [SURFACE-LOCK-301.md](SURFACE-LOCK-301.md). Prior rc4 UI and CFC performance changes: [PLACEMENT-UI-301.md](PLACEMENT-UI-301.md). Previous rc3 context: [GAMEPLAY-FIXES-301.md](GAMEPLAY-FIXES-301.md); background in [STABILIZATION-301.md](STABILIZATION-301.md) for verified safeguards, installation, limitations and mandatory two-client acceptance tests. This branch integrates
+**v0.3.6-rc7: empty blueprints always place, wall plants adjust vertically, beds and floor lockers stay upright. CFC 100m ONLY applies to client-loaded lockers. REAL TWO-CLIENT RETEST REQUIRED.**
+See [BLUEPRINT-ROTATION-301.md](BLUEPRINT-ROTATION-301.md) for current blueprint, wall aim, upright bed and CFC radius/streaming limitations. Prior rc6: [SURFACE-GRID-301.md](SURFACE-GRID-301.md), covering camera-pitch, wall priority and static world-grid fixes. Background on the prior floor/wall attachment work: [SURFACE-LOCK-301.md](SURFACE-LOCK-301.md). Prior rc4 UI and CFC performance changes: [PLACEMENT-UI-301.md](PLACEMENT-UI-301.md). Previous rc3 context: [GAMEPLAY-FIXES-301.md](GAMEPLAY-FIXES-301.md); background in [STABILIZATION-301.md](STABILIZATION-301.md) for verified safeguards, installation, limitations and mandatory two-client acceptance tests. This branch integrates
 SnapBuilder and Building Tweaks porting work with the safe starting point for
 Craft From Containers. Full multiplayer feature parity is **not implemented**.
 
@@ -12,12 +12,15 @@ The experimental Craft From Containers module NEVER turns an unconfirmed
 storage transfer into a successful recipe consumption. This protects against
 free crafting/duplication. **Newly implemented but disabled by default:**
 server-acknowledged sequential prefetch, deferred fabricator Craft action,
-and deferred furniture construction via normal multiplayer Builder.TryPlace.
+and **nonblocking** ingredient prefetch on blueprint placement. Builder.TryPlace
+must NEVER be deferred, suppressed or replayed on resource availability; an
+empty construction blueprint can be placed with zero materials.
 These features passed only a simulated Unity/Harmony/MP integration harness;
 they have NOT been verified on a real 3.0.1 server or two game clients.
 
 Tests now simulate BOT Benson's construction Harmony prefixes, proving
-no construction packet is sent while resources are outstanding. Regression fixes cover duplicate recipe ingredient rows, fast repeat-click races,
+a blueprint construction packet still goes out even with zero resources,
+and later server resource ACKs cannot replay that placement. Regression fixes cover duplicate recipe ingredient rows, fast repeat-click races,
 and restoring temporary Builder surface permissions after construction.
 The original SnapBuilder and Building Tweaks are still only partially ported; arbitrary
 moving-parent attachment is not supported without a new server protocol.
