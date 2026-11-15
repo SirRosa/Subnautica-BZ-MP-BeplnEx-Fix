@@ -1,7 +1,7 @@
 # Construtor Zero — stabilized release candidate for Below Zero MP 3.0.1
 
-**v0.3.4-rc5: genuine physical floor/wall attachment, native OrientedBounds correction, BOT Benson collider out parameter preserved, no airborne build approval. REAL TWO-CLIENT RETEST REQUIRED.**
-See [SURFACE-LOCK-301.md](SURFACE-LOCK-301.md) for the current root cause analysis, real surface raycast anchoring, multiplayer safety gates and mandatory acceptance tests. Prior rc4 UI and CFC performance changes: [PLACEMENT-UI-301.md](PLACEMENT-UI-301.md). Previous rc3 context: [GAMEPLAY-FIXES-301.md](GAMEPLAY-FIXES-301.md); background in [STABILIZATION-301.md](STABILIZATION-301.md) for verified safeguards, installation, limitations and mandatory two-client acceptance tests. This branch integrates
+**v0.3.5-rc6: corrected floor anchor when looking down, prioritizes real walls over nearby lockers, and uses a fixed world-space wall grid. REQUIRES REAL TWO-CLIENT RETEST.**
+See [SURFACE-GRID-301.md](SURFACE-GRID-301.md) for the latest camera-pitch, wall priority and static world-grid fixes and mandatory test checklist. Background on the prior floor/wall attachment work: [SURFACE-LOCK-301.md](SURFACE-LOCK-301.md). Prior rc4 UI and CFC performance changes: [PLACEMENT-UI-301.md](PLACEMENT-UI-301.md). Previous rc3 context: [GAMEPLAY-FIXES-301.md](GAMEPLAY-FIXES-301.md); background in [STABILIZATION-301.md](STABILIZATION-301.md) for verified safeguards, installation, limitations and mandatory two-client acceptance tests. This branch integrates
 SnapBuilder and Building Tweaks porting work with the safe starting point for
 Craft From Containers. Full multiplayer feature parity is **not implemented**.
 
