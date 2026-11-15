@@ -96,6 +96,10 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 Hook("Inventory", "DestroyItem", null, nameof(InventoryDestroyObserved));
                 Hook("Inventory", "OnAddItem", null, nameof(InventoryAdded));
                 Hook("uGUI_RecipeEntry", "UpdateIngredients", null, nameof(RecipeObserved));
+                // UI-only visuals. Never alter CrafterLogic fulfilment or
+                // Inventory.GetPickupCount; the server owns real ingredients.
+                Hook("TooltipFactory", "CraftRecipe", null,
+                    nameof(CraftRecipeDisplayPostfix));
                 Hook("uGUI_CraftingMenu", "Action", nameof(CraftActionPrefix), null);
                 Hook("uGUI_CraftingMenu", "ActionAvailable", null,
                     nameof(CraftAvailablePostfix));
@@ -412,11 +416,147 @@ namespace Sirro.BZ.MP.ConstrutorZero
             __result = AutoCraftCoordinator.CanAdvertise(__args[0]);
         }
 
-        private static void RecipeObserved(object __instance)
+        private static void RecipeObserved(object __instance, object[] __args)
         {
-            if (!enabled || !ContainerConfig.Enabled || !ContainerConfig.ManualPrefetchEnabled)
-                return;
-            RecipePrefetch.ObserveRecipe(__instance);
+            if (!enabled || !ContainerConfig.Enabled) return;
+            if (ContainerConfig.ManualPrefetchEnabled)
+                RecipePrefetch.ObserveRecipe(__instance);
+            if (!ContainerConfig.AutoCraftEnabled) return;
+            try { RefreshPinnedRecipeVisuals(__instance, __args); }
+            catch (Exception ex)
+            {
+                Once("CFC_RECIPE_UI_FAILED: " +
+                    (ex.InnerException ?? ex).Message);
+            }
+        }
+
+        private static int LocalCount(object techType)
+        {
+            var inv = Get(Reflect.Type("Inventory"), "main");
+            var method = inv?.GetType().GetMethods(All).FirstOrDefault(m =>
+                m.Name == "GetPickupCount" && m.GetParameters().Length == 1 &&
+                m.GetParameters()[0].ParameterType.IsInstanceOfType(techType));
+            return method == null ? 0 : Math.Max(0, Convert.ToInt32(
+                method.Invoke(inv, new[] { techType }), CultureInfo.InvariantCulture));
+        }
+
+        private static bool WriteMember(object obj, string name, object value)
+        {
+            if (obj == null) return false;
+            const BindingFlags flags = BindingFlags.Public |
+                BindingFlags.NonPublic | BindingFlags.Instance;
+            var field = obj.GetType().GetField(name, flags);
+            if (field != null) { field.SetValue(obj, value); return true; }
+            var property = obj.GetType().GetProperty(name, flags);
+            if (property != null && property.CanWrite)
+            {
+                property.SetValue(obj, value, null);
+                return true;
+            }
+            return false;
+        }
+
+        private static void RefreshPinnedRecipeVisuals(object entry, object[] args)
+        {
+            if (entry == null || args == null || args.Length < 1) return;
+            var items = Get(entry, "items") as IList;
+            var techType = Get(entry, "techType");
+            var manager = Get(entry, "manager");
+            if (items == null || techType == null || manager == null) return;
+            var ingredientsMethod = Reflect.Type("TechData")?.GetMethods(All)
+                .FirstOrDefault(m => m.Name == "GetIngredients" &&
+                    m.IsStatic && m.GetParameters().Length == 1 &&
+                    m.GetParameters()[0].ParameterType.IsInstanceOfType(techType));
+            var ingredients = ingredientsMethod?.Invoke(null, new[] { techType })
+                as IEnumerable;
+            if (ingredients == null) return;
+            int index = 0;
+            foreach (var ingredient in ingredients)
+            {
+                if (index >= items.Count) break;
+                var kind = Get(ingredient, "techType");
+                var needed = Get(ingredient, "amount");
+                var recipeItem = items[index++];
+                if (kind == null || needed == null || recipeItem == null) continue;
+                int required = Convert.ToInt32(needed, CultureInfo.InvariantCulture);
+                if (required <= 0) continue;
+                var current = Math.Min(9999,
+                    LocalCount(kind) + CountAvailable(kind));
+                var color = Get(manager, current >= required ?
+                    "colorGreen" : "colorRed");
+                var label = Get(recipeItem, "text");
+                if (label != null && color != null)
+                    WriteMember(label, "color", color);
+                var set = recipeItem.GetType().GetMethods(All).FirstOrDefault(m =>
+                    m.Name == "Set" && m.GetParameters().Length == 4 &&
+                    m.GetParameters()[0].ParameterType.IsInstanceOfType(kind));
+                // Do not trigger the original item-acquisition ping for an
+                // advisory locker preview.
+                set?.Invoke(recipeItem, new object[] { kind, current, required, false });
+            }
+        }
+
+        private static void CraftRecipeDisplayPostfix(object[] __args)
+        {
+            if (!Ready || !ContainerConfig.Enabled ||
+                !ContainerConfig.AutoCraftEnabled ||
+                !IsNetworkActive() || __args == null || __args.Length != 3 ||
+                !(__args[1] is bool locked) || locked) return;
+            try
+            {
+                // TooltipFactory.CraftRecipe(TechType,bool,TooltipData)
+                // builds the RED ingredient icons using only the inventory.
+                // Rebuild those *display icons only* from the combined advisory
+                // stock, leaving vanilla ingredient validation untouched.
+                var recipe = __args[0];
+                var icons = Get(__args[2], "icons") as IList;
+                if (recipe == null || icons == null) return;
+                var ingredients = Reflect.Type("TechData")?.GetMethods(All)
+                    .FirstOrDefault(m => m.Name == "GetIngredients" && m.IsStatic &&
+                        m.GetParameters().Length == 1 &&
+                        m.GetParameters()[0].ParameterType.IsInstanceOfType(recipe))
+                    ?.Invoke(null, new[] { recipe }) as IEnumerable;
+                if (ingredients == null) return;
+                var spriteManager = Reflect.Type("SpriteManager");
+                var iconType = Reflect.Type("TooltipIcon");
+                var language = Get(Reflect.Type("Language"), "main");
+                var getLanguage = language?.GetType().GetMethod("Get", All,
+                    null, new[] { typeof(string) }, null);
+                var spriteGet = spriteManager?.GetMethods(All).FirstOrDefault(m =>
+                    m.Name == "Get" && m.IsStatic &&
+                    m.GetParameters().Length == 1 &&
+                    m.GetParameters()[0].ParameterType == recipe.GetType());
+                var iconCtor = iconType?.GetConstructors(All)
+                    .FirstOrDefault(c => c.GetParameters().Length == 2 &&
+                        c.GetParameters()[1].ParameterType == typeof(string));
+                if (spriteGet == null || iconCtor == null) return;
+                var candidate = new List<object>();
+                foreach (var ingredient in ingredients)
+                {
+                    var kind = Get(ingredient, "techType");
+                    var amount = Get(ingredient, "amount");
+                    if (kind == null || amount == null) return;
+                    var required = Convert.ToInt32(amount, CultureInfo.InvariantCulture);
+                    if (required <= 0) return;
+                    var available = LocalCount(kind) + CountAvailable(kind);
+                    var name = getLanguage?.Invoke(language, new object[] {
+                        kind.ToString() }) as string ?? kind.ToString();
+                    var text = "<color=" + (available >= required ?
+                        "#94DE00FF" : "#FF7777FF") + ">" + name +
+                        (required > 1 ? " x" + required : "") + "</color>";
+                    var sprite = spriteGet.Invoke(null, new[] { kind });
+                    candidate.Add(iconCtor.Invoke(new[] { sprite, (object)text }));
+                }
+                // No change on any failed lookup. Avoid replacing icons when
+                // the game has different or modded tooltip ABI.
+                icons.Clear();
+                foreach (var icon in candidate) icons.Add(icon);
+            }
+            catch (Exception ex)
+            {
+                Once("CFC_TOOLTIP_UI_FAILED: " +
+                    (ex.InnerException ?? ex).Message);
+            }
         }
 
         private static void InventoryAdded(object __instance, object[] __args)
