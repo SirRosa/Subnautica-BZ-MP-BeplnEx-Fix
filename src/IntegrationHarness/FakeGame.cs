@@ -127,9 +127,26 @@ public class StorageContainer
     [MethodImpl(MethodImplOptions.NoInlining)]
     public void ResetContainer() { }
 }
+public class QuickSlots
+{
+    public bool HotkeysIgnored;
+    public void SetIgnoreHotkeyInput(bool ignore) => HotkeysIgnored = ignore;
+}
+public class PlaceTool
+{
+    public object usingPlayer = new object();
+    public bool rotationEnabled = true;
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public void LateUpdate() { }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public void OnPlace() { }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public void OnHolster() { }
+}
 public class Inventory
 {
     public static Inventory main = new Inventory();
+    public QuickSlots quickSlots = new QuickSlots();
     public readonly Dictionary<TechType, int> ActualItems = new Dictionary<TechType, int>();
     [MethodImpl(MethodImplOptions.NoInlining)]
     public int GetPickupCount(TechType type) =>
