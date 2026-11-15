@@ -713,7 +713,8 @@ public static class Program
             BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
         clipField.SetValue(null, true);
         unsafeField.SetValue(null, true);
-        Assert(Builder.UpdateAllowed(), "G allows furniture placement despite collision");
+        Assert(!Builder.UpdateAllowed(),
+            "G cannot approve an invalid/missing mounting surface");
         Assert(Builder.ValidateOutdoor(new GameObject()),
             "G permits furniture clipping against restricted walls");
         Builder.CollisionSpaceAvailable = false;
@@ -730,8 +731,8 @@ public static class Program
         Assert(Builder.allowedInBase && Builder.allowedOutside &&
             Builder.allowedOnConstructables && Builder.allowedInSub,
             "Expanded furniture placement flags applied while ghost is active");
-        Assert(Builder.allowedSurfaceTypes.Contains(SurfaceType.Ceiling),
-            "Expanded ceiling surface available while building furniture");
+        Assert(!Builder.allowedSurfaceTypes.Contains(SurfaceType.Ceiling),
+            "G cannot turn floor/wall furniture into ceiling furniture");
 
         // Switching ghosts without Builder.End must not leak permissive
         // furniture flags onto native base modules or a missing prefab.
@@ -755,8 +756,8 @@ public static class Program
         Builder.prefab = box;
         Builder.UpdateAllowed();
         Assert(Builder.allowedInBase && Builder.allowedOutside &&
-            Builder.allowedSurfaceTypes.Contains(SurfaceType.Ceiling),
-            "Furniture permissions reapply only after valid furniture ghost resumes");
+            !Builder.allowedSurfaceTypes.Contains(SurfaceType.Ceiling),
+            "Furniture flags reapply without changing legal mounting surfaces");
 
         var expandedField = cfg.GetField("ExpandedSurfaces",
             BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
