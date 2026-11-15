@@ -1,6 +1,6 @@
-# Construtor Zero 0.3.0-rc1 — stabilizacja dla BOT Benson MP 3.0.1
+# Construtor Zero 0.3.1-rc2 — stabilizacja dla BOT Benson MP 3.0.1
 
-**Status: release candidate, nie certyfikowana stabilna wersja.**
+**Status: release candidate po utwardzeniu bezpieczeństwa, nie certyfikowana stabilna wersja.**
 Wszystkie bieżące kontrole ABI i symulacje CI muszą przejść, ale rzeczywiste testy na **dwóch klientach z serwerem 3.0.1** nadal muszą być wykonane. Zachowaj zapasową kopię zapisu świata.
 
 ## Zakres wtyczki
@@ -18,6 +18,8 @@ Wszystkie bieżące kontrole ABI i symulacje CI muszą przejść, ale rzeczywist
 3. Zamknięcie fabricatora, `OnDeselect`, utrata odblokowania receptury, tryb Creative, zmiana ghosta lub rozłączenie anulują oczekującą operację przed kolejnym transferem. Materiały już prawidłowo przeniesione **pozostają w ekwipunku**.
 4. UI wskazuje wyłącznie **lokalnie widoczny** stan schowków. Serwer może odrzucić żądanie, gdy drugi gracz pobrał już przedmiot.
 5. Snap nigdy nie pozwala, aby częściowo zmienione argumenty geometrii wyciekły po wyjątku. Globalne flagi `Builder` nie przechodzą z mebli na moduły bazowe.
+6. Nieobsłużony wyjątek podczas `Player.Update` lub hooka craftingu **wyłącza CFC do końca sesji**, anuluje kolejki i przywraca zwykłe budowanie; żaden kolejny pakiet transferu nie jest wysyłany przez mod.
+7. Automatyczne pobieranie materiałów do mebli nie rozpoczyna się, jeśli lokalnie widoczne szafki nie zawierają kompletnego przepisu. To ogranicza przewidywalne transfery częściowe, lecz **nie eliminuje odrzucenia serwera** przy równoczesnej aktywności innych graczy.
 
 ## Czego ten release candidate NIE zapewnia
 
@@ -46,3 +48,10 @@ Wszystkie bieżące kontrole ABI i symulacje CI muszą przejść, ale rzeczywist
 - [ ] Logi obu klientów i serwera: brak `CFC_INIT_FAILED`, `BUILDING_HOOK_FAILED` i `SNAP_DISABLED`, a wymagana integracja uruchamia się prawidłowo.
 
 **STOP:** przy zniknięciu zasobu, duplikacji, niezgodnej pozycji konstrukcji, błędzie pakietu lub zawieszeniu craftingu przerwij i zachowaj kopię świata oraz logi. Potwierdzona stabilność wymaga przejścia tych testów na prawdziwym serwerze.
+
+## Zmiany 0.3.1-rc2
+
+- Przerwanie wykonania po nieoczekiwanym wyjątku Harmony/refleksji (`CFC_RUNTIME_DISABLED` w logu), bez automatycznego ponawiania.
+- Brak rozpoczęcia automatycznego budowania, gdy przed pierwszym żądaniem wiadomo, że nie ma pełnego zestawu składników.
+- Test wymuszonej awarii API Unity, czyszczenia oczekujących operacji oraz możliwości dalszego zwykłego budowania.
+- Ostatnie CI przed pakowaniem: 182/182 kontrolnych/symulacyjnych testów; nie jest to test serwera 3.0.1 w grze.
