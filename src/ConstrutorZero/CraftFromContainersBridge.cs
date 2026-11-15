@@ -27,6 +27,10 @@ namespace Sirro.BZ.MP.ConstrutorZero
             BindingFlags.Static | BindingFlags.Instance;
         private static readonly Dictionary<object, object> Storage = new Dictionary<object, object>();
         private static readonly HashSet<string> Warned = new HashSet<string>();
+        // Prevent repeated transfer requests for the same unique item while the
+        // authoritative server is processing the previous request.
+        private static readonly Dictionary<string, DateTime> PendingItemIds =
+            new Dictionary<string, DateTime>(StringComparer.Ordinal);
         private static object harmony;
         private static MethodInfo unpatch;
         private static MethodInfo patch;
@@ -108,6 +112,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
             }
             catch (Exception e) { Trace.Info("CFC_UNPATCH_FAILED: " + e.Message); }
             Storage.Clear();
+            PendingItemIds.Clear();
             lastRequestedTechType = null;
             installedHooks = 0;
         }
@@ -227,6 +232,11 @@ namespace Sirro.BZ.MP.ConstrutorZero
                         var containerId = GetIdentity(identifier, Get(constructable, "gameObject"));
                         if (string.IsNullOrWhiteSpace(itemId) || string.IsNullOrWhiteSpace(containerId))
                             continue;
+                        var now = DateTime.UtcNow;
+                        if (PendingItemIds.TryGetValue(itemId, out var requestedAt) &&
+                            (now - requestedAt).TotalSeconds < 5)
+                            continue;
+                        PendingItemIds.Remove(itemId);
                         // Explicit, unique identity guards are required before issuing server requests.
                         var constructor = argsType.GetConstructors(All)
                             .FirstOrDefault(c => c.GetParameters().Length == 5);
@@ -234,6 +244,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
                         var values = new object[] { containerId, lockerType, itemId, pickup, true };
                         var request = constructor.Invoke(values);
                         dispatch.Invoke(null, new[] { request });
+                        PendingItemIds[itemId] = now;
                         Trace.Info("CFC_SERVER_TRANSFER_REQUEST: " + wantedTechType +
                             ", item=" + itemId + ", locker=" + containerId);
                         return true;
