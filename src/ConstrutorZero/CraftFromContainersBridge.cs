@@ -76,6 +76,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 Hook("Inventory", "DestroyItem", null, nameof(InventoryDestroyObserved));
                 Hook("Inventory", "OnAddItem", null, nameof(InventoryAdded));
                 Hook("uGUI_RecipeEntry", "UpdateIngredients", null, nameof(RecipeObserved));
+                Hook("uGUI_CraftingMenu", "Action", nameof(CraftActionPrefix), null);
+                Hook("uGUI_CraftingMenu", "Close", nameof(CraftMenuClosePrefix), null);
                 Hook("Player", "Update", null, nameof(PlayerUpdate));
                 enabled = true;
                 Trace.Info("CFC_READY: hooks=" + installedHooks +
@@ -122,6 +124,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
                     unpatch.Invoke(harmony, new object[] { "sirro.bz.mp.construtor-zero.containers" });
             }
             catch (Exception e) { Trace.Info("CFC_UNPATCH_FAILED: " + e.Message); }
+            AutoCraftCoordinator.Reset();
             RecipePrefetch.Reset();
             Storage.Clear();
             PendingItemIds.Clear();
@@ -180,6 +183,14 @@ namespace Sirro.BZ.MP.ConstrutorZero
             lastRequestedTechType = __args[0];
         }
 
+        internal static void Report(string message) => Info(message);
+
+        private static bool CraftActionPrefix(object __instance, object[] __args) =>
+            AutoCraftCoordinator.CraftActionPrefix(__instance, __args);
+
+        private static void CraftMenuClosePrefix(object __instance) =>
+            AutoCraftCoordinator.CraftingMenuClosing(__instance);
+
         private static void RecipeObserved(object __instance)
         {
             if (!enabled || !ContainerConfig.Enabled || !ContainerConfig.ManualPrefetchEnabled)
@@ -224,6 +235,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 return;
             }
             RecipePrefetch.Pump(Info);
+            AutoCraftCoordinator.Tick();
             if (!ContainerConfig.ManualPrefetchEnabled)
                 return;
             try
@@ -419,6 +431,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
         internal static float RangeMeters = 100f;
         internal static bool Enabled = true;
         internal static bool ManualPrefetchEnabled = false;
+        internal static bool AutoCraftEnabled = false;
         internal static string TransferKey = "F6";
         internal static readonly Dictionary<string, bool> Allowed = new Dictionary<string, bool>(
             StringComparer.OrdinalIgnoreCase);
@@ -445,6 +458,9 @@ namespace Sirro.BZ.MP.ConstrutorZero
                         "enabled=true",
                         "range_meters=100",
                         "manual_prefetch_enabled=false",
+                        "# Auto craft intercepts only uGUI_CraftingMenu.Action(Craft), not category expansion.",
+                        "# This is experimental and requires a full multiplayer gameplay test.",
+                        "auto_craft_enabled=false",
                         "transfer_key=F6",
                         "Locker=true",
                         "SmallLocker=true"
@@ -459,6 +475,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
                         Enabled = value.Equals("true", StringComparison.OrdinalIgnoreCase);
                     else if (name.Equals("manual_prefetch_enabled", StringComparison.OrdinalIgnoreCase))
                         ManualPrefetchEnabled = value.Equals("true", StringComparison.OrdinalIgnoreCase);
+                    else if (name.Equals("auto_craft_enabled", StringComparison.OrdinalIgnoreCase))
+                        AutoCraftEnabled = value.Equals("true", StringComparison.OrdinalIgnoreCase);
                     else if (name.Equals("range_meters", StringComparison.OrdinalIgnoreCase) &&
                         float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var range))
                         RangeMeters = Math.Max(1f, Math.Min(300f, range));
