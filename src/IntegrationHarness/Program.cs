@@ -128,7 +128,7 @@ public static class Program
         Assert(Subnautica.Events.Handlers.Storage.NetworkRequests == 2,
             "Only one new server transfer requested");
         Inventory.main.OnAddItem(new InventoryItem { item = new Pickupable {
-            techType = TechType.Titanium, gameObject = new GameObject { name = "intruder" } } });
+            techType = TechType.Copper, gameObject = new GameObject { name = "intruder" } } });
         Assert((string)inFlight.GetValue(null) == "item-b",
             "Unrelated inventory delivery does not acknowledge pending transfer");
         pump.Invoke(null, new object[] { log });
@@ -145,8 +145,12 @@ public static class Program
             "Server receives the second ingredient request");
         Inventory.main.OnAddItem(third);
         Assert(!(bool)active.GetValue(null), "Recipe transfer queue completed safely");
-        Assert(Inventory.main.GetPickupCount(TechType.Titanium) == 0,
-            "Plugin never falsifies client ingredient counts after delivery");
+        Assert(Inventory.main.GetPickupCount(TechType.Titanium) == 2,
+            "Ingredient counts change ONLY on actual Inventory.OnAddItem acknowledgements");
+        Assert(Inventory.main.GetPickupCount(TechType.Copper) == 1,
+            "Unrelated item delivery is tracked by vanilla inventory");
+        // Simulate consuming the delivered ingredients with vanilla crafting.
+        Inventory.main.ActualItems.Clear();
         var currentContext = tracker.GetMethod("BeginCurrentContext",
             BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
         var cancel = tracker.GetMethod("Cancel",
@@ -169,6 +173,74 @@ public static class Program
             "World disconnect cancels all outstanding ingredient requests");
         Subnautica.API.Features.Network.IsMultiplayerActive = true;
         manual.SetValue(null, false);
+
+        // Transparent auto craft: the real uGUI_CraftingMenu.Action(Craft) is
+        // deferred until two server-approved item transfers were received.
+        var autoField = confType.GetField("AutoCraftEnabled",
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+        autoField.SetValue(null, true);
+        locker.container.Clear(); // stale locker no longer offers any items
+        var autoLocker = new StorageContainer();
+        autoLocker.storageRoot.position = new Vector3(3, 0, 0);
+        autoLocker.storageRoot.gameObject.name = "locker-a";
+        autoLocker.storageRoot.gameObject.AddComponent(new Constructable {
+            techType = TechType.Locker, gameObject = autoLocker.storageRoot.gameObject
+        });
+        var fourth = new InventoryItem { item = new Pickupable {
+            techType = TechType.Titanium, gameObject = new GameObject { name = "item-d" } } };
+        var fifth = new InventoryItem { item = new Pickupable {
+            techType = TechType.Titanium, gameObject = new GameObject { name = "item-e" } } };
+        autoLocker.container.Add(fourth);
+        autoLocker.container.Add(fifth);
+        autoLocker.Awake();
+        var gui = new uGUI_CraftingMenu();
+        var craftNode = new uGUI_CraftingMenu.Node {
+            action = TreeAction.Craft, techType = TechType.TestRecipe };
+        gui.Action(new uGUI_CraftingMenu.Node {
+            action = TreeAction.Expand, techType = TechType.TestRecipe });
+        Assert(gui.ExpandActions == 1,
+            "Category expansion unaffected by automatic crafting interception");
+        gui.Action(craftNode);
+        Assert(gui.CraftActionCalls == 0,
+            "Craft action postponed rather than attempting free client-side crafting");
+        var autoType = plugin.GetType().Assembly.GetType(
+            "Sirro.BZ.MP.ConstrutorZero.AutoCraftCoordinator", true);
+        var isWaiting = autoType.GetProperty("IsWaiting",
+            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+        Assert((bool)isWaiting.GetValue(null), "Craft waits for server ingredient delivery");
+        Time.frameCount++;
+        Player.main.Update();
+        Assert(Subnautica.Events.Handlers.Storage.NetworkRequests == 4,
+            "Auto craft requested first ingredient through MP storage processor");
+        Inventory.main.OnAddItem(fourth);
+        autoLocker.container.Remove(fourth);
+        Time.frameCount++;
+        Player.main.Update();
+        Assert(Subnautica.Events.Handlers.Storage.NetworkRequests == 5,
+            "Auto craft requested second ingredient only after first server ACK");
+        Assert(gui.CraftActionCalls == 0,
+            "Vanilla craft still blocked while one ingredient remains outstanding");
+        Inventory.main.OnAddItem(fifth);
+        Time.frameCount++;
+        Player.main.Update();
+        Assert(gui.CraftActionCalls == 1,
+            "Original craft action replayed exactly once after valid inventory delivery");
+        Assert(!(bool)isWaiting.GetValue(null), "Auto craft state reset after replay");
+        Assert(Inventory.main.GetPickupCount(TechType.Titanium) == 2,
+            "Auto craft uses real inventory rather than synthesizing materials");
+
+        // Closing the menu must cancel deferred actions without crafting anything.
+        Inventory.main.ActualItems.Clear();
+        gui.Action(craftNode);
+        Assert((bool)isWaiting.GetValue(null), "Second deferred craft is pending");
+        gui.Close();
+        Assert(!(bool)isWaiting.GetValue(null),
+            "Menu close cancels staged craft and ingredient queue");
+        Time.frameCount++;
+        Player.main.Update();
+        Assert(gui.CraftActionCalls == 1,
+            "Cancelled deferred craft cannot replay after closing UI");
+        autoField.SetValue(null, false);
 
         var hit = new RaycastHit { normal = new Vector3(0,1,0), transform = new Transform() };
         var pos = new Vector3(1.37f, 0f, 2.74f);
