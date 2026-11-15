@@ -700,6 +700,99 @@ public static class Program
         Eq(rot.eulerAngles.y,45f,"Fine rotation 5 degrees");
         Input.Clear();
 
+        // New architecture: the vanilla camera ray can hit a wall or the sky
+        // BEFORE the game rejects that surface. CheckAsSubModule must perform
+        // a SECOND raycast along the mounting surface for floor/wall-only
+        // furniture BEFORE UpdateAllowed's collision and MP packet stages.
+        Assert(patches.Any(m => m.Name == "CheckAsSubModule"),
+            "Native surface-lock CheckAsSubModule Harmony hook installed");
+        Builder.prefab = box;
+        Builder.constructableTechType = TechType.Locker;
+        constructable.techType = TechType.Locker;
+        constructable.allowedSurfaceTypes =
+            new List<SurfaceType> { SurfaceType.Ground };
+        Builder.allowedSurfaceTypes =
+            new List<SurfaceType> { SurfaceType.Ground };
+        Builder.SimulateSurfaceValidation = true;
+        Builder.CollisionSpaceAvailable = true;
+        Physics.GroundAvailable = true;
+        Physics.WallAvailable = false;
+        Physics.FloorHeight = 1.25f;
+        MainCamera.camera.transform.position = new Vector3(0f,2.5f,0f);
+        MainCamera.camera.transform.forward = new Vector3(0f,.6f,.8f);
+        Builder.placePosition = new Vector3(0f,8f,0f);
+        Builder.placeRotation = Quaternion.Euler(new Vector3(0f,0f,0f));
+        int startingFloorCasts = Physics.FloorRaycasts;
+        Assert(Builder.UpdateAllowed(),
+            "Floor-only Locker finds legal mounting floor while camera aims ABOVE it");
+        Assert(Physics.FloorRaycasts > startingFloorCasts,
+            "Ground position is physically raycast, never guessed from camera pitch");
+        Eq(Builder.placePosition.y,1.25f,
+            "Locker grounded at actual floor height regardless of looking up");
+        var gluedX = Builder.placePosition.x;
+        var gluedZ = Builder.placePosition.z;
+        Builder.placePosition = new Vector3(0f,8f,0f);
+        MainCamera.camera.transform.forward = new Vector3(0f,-.86f,.51f);
+        Assert(Builder.UpdateAllowed(),
+            "Floor-only Locker still has legal floor while camera aims DOWN");
+        Eq(Builder.placePosition.y,1.25f,
+            "Looking down does not shift Locker vertically");
+        Eq(Builder.placePosition.x,gluedX,
+            "Camera pitch does not move Locker along X");
+        Eq(Builder.placePosition.z,gluedZ,
+            "Camera pitch does not move Locker along Z");
+
+        Physics.GroundAvailable = false;
+        Builder.placePosition = new Vector3(0f,8f,0f);
+        Assert(!Builder.UpdateAllowed(),
+            "Missing floor prevents airborne Locker placement");
+        Eq(Builder.placePosition.y,1.25f,
+            "Brief missing floor holds LAST grounded ghost, not a camera-height ghost");
+        Physics.GroundAvailable = true;
+        Builder.CollisionSpaceAvailable = false;
+        Assert(!Builder.UpdateAllowed(),
+            "Found floor does not bypass vanilla collision checks");
+        Eq(Builder.placePosition.y,1.25f,
+            "Colliding Locker still displays on ground, not floating");
+        Builder.CollisionSpaceAvailable = true;
+
+        // Only wall-mounted furniture gets a horizontal wall probe when the
+        // user's camera is pitched upwards/downwards. Floor availability
+        // must never be accepted as wall attachment.
+        constructable.techType = TechType.SmallLocker;
+        constructable.allowedSurfaceTypes =
+            new List<SurfaceType> { SurfaceType.Wall };
+        Builder.constructableTechType = TechType.SmallLocker;
+        Builder.allowedSurfaceTypes = new List<SurfaceType> { SurfaceType.Wall };
+        Physics.WallAvailable = false;
+        Assert(!Builder.UpdateAllowed(),
+            "Wall-only SmallLocker cannot attach to bare floor");
+        Physics.WallAvailable = true;
+        MainCamera.camera.transform.forward = new Vector3(0f,.8f,.6f);
+        Assert(Builder.UpdateAllowed(),
+            "Wall-only SmallLocker finds wall regardless of camera pitch");
+        Eq(Builder.placePosition.y,2.5f,
+            "Wall-only furniture attaches at wall hit height");
+        Physics.WallAvailable = false;
+
+        // Room/base modules still belong to the original multiplayer
+        // validator and must not use this furniture attachment path.
+        Builder.prefab = basePrefab;
+        int beforeModuleProbe = Physics.FloorRaycasts;
+        Assert(!Builder.UpdateAllowed(),
+            "Base-piece validation is never force-enabled by surface lock");
+        Assert(Physics.FloorRaycasts == beforeModuleProbe,
+            "Base-piece does not invoke furniture floor probes");
+
+        Builder.prefab = box;
+        constructable.techType = TechType.Locker;
+        constructable.allowedSurfaceTypes =
+            new List<SurfaceType> { SurfaceType.Ground };
+        Builder.constructableTechType = TechType.None;
+        Builder.allowedSurfaceTypes = new List<SurfaceType> { SurfaceType.Wall };
+        Builder.SimulateSurfaceValidation = false;
+        Physics.GroundAvailable = true;
+        MainCamera.camera.transform.forward = new Vector3(0f,0f,1f);
         Time.frameCount++;
         Input.Down.Add(KeyCode.G);
         Builder.Update();
