@@ -59,7 +59,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 if (patch == null) throw new MissingMethodException("Harmony.Patch");
 
                 Hook("StorageContainer", "Awake", null, nameof(StorageAwake));
-                Hook("StorageContainer", "OnDestroy", null, nameof(StorageDestroyed));
+                Hook("StorageContainer", "ResetContainer", null, nameof(StorageAwake));
                 Hook("SeamothStorageContainer", "Awake", null, nameof(StorageAwake));
                 // Observes TechType queried by vanilla inventory. Does NOT inflate
                 // crafting counts until secure synchronous consumption is possible.
@@ -129,11 +129,26 @@ namespace Sirro.BZ.MP.ConstrutorZero
             catch (Exception e) { Once("CFC_REGISTER: " + e.Message); }
         }
 
-        private static void StorageDestroyed(object __instance)
+        private static void PruneDeadStorages()
         {
-            if (__instance == null) return;
-            try { Storage.Remove(Get(__instance, "storageRoot") ?? Get(__instance, "transform")); }
-            catch { }
+            // Unity native objects can be destroyed while the managed wrapper
+            // remains strongly referenced. Compare using UnityEngine.Object.op_Equality,
+            // not ReferenceEquals, and prune on every use.
+            try
+            {
+                var unityObject = Reflect.Type("UnityEngine.Object");
+                var unityEquals = unityObject?.GetMethod("op_Equality",
+                    BindingFlags.Public | BindingFlags.Static,
+                    null, new[] { unityObject, unityObject }, null);
+                if (unityEquals == null) return;
+                foreach (var root in Storage.Keys.ToArray())
+                {
+                    bool dead = root == null || (bool)unityEquals.Invoke(null,
+                        new[] { root, null });
+                    if (dead) Storage.Remove(root);
+                }
+            }
+            catch (Exception e) { Once("CFC_PRUNE_FAILED: " + e.Message); }
         }
 
         private static void InventoryCountObserved(object __instance, object[] __args)
@@ -153,7 +168,9 @@ namespace Sirro.BZ.MP.ConstrutorZero
 
         private static void PlayerUpdate()
         {
-            if (!enabled || !ContainerConfig.Enabled || !ContainerConfig.ManualPrefetchEnabled)
+            if (!enabled || !ContainerConfig.Enabled) return;
+            PruneDeadStorages();
+            if (!ContainerConfig.ManualPrefetchEnabled)
                 return;
             try
             {
@@ -191,6 +208,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
             if (!IsNetworkActive()) return false;
             try
             {
+                PruneDeadStorages();
                 var player = Reflect.Type("Player");
                 var local = Get(player, "main");
                 var pos = Get(Get(local, "transform"), "position");
