@@ -437,7 +437,12 @@ namespace Sirro.BZ.MP.ConstrutorZero
 
         private static void UpdateAllowedPrefix()
         {
-            if (!Cfg.ExpandedSurfaces)
+            // Extending Ground-only furniture to Wall/Ceiling for every
+            // placement made vanilla treat walls as acceptable surfaces.
+            // Floor items then floated at camera/wall height. In multiplayer
+            // broaden surfaces ONLY while the player deliberately holds the
+            // G Full Override toggle for a valid furniture ghost.
+            if (!Cfg.ExpandedSurfaces || (IsMultiplayer() && !fullOverride))
             {
                 RestorePlacementFlags();
                 return;
