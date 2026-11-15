@@ -1,6 +1,7 @@
-# Construtor Zero — development branch for Below Zero MP 3.0.1
+# Construtor Zero — stabilized release candidate for Below Zero MP 3.0.1
 
-**v0.2.1-test: first controlled candidate for a disposable two-client save only. Not for normal play.** See [FIRST-TEST-301.md](FIRST-TEST-301.md) for enabled features, limitations and the stop/go checklist. This branch integrates
+**v0.3.0-rc1: hardened build; production multiplayer stability is NOT YET VERIFIED.**
+See [STABILIZATION-301.md](STABILIZATION-301.md) for verified safeguards, installation, limitations and mandatory two-client acceptance tests. This branch integrates
 SnapBuilder and Building Tweaks porting work with the safe starting point for
 Craft From Containers. Full multiplayer feature parity is **not implemented**.
 
@@ -25,8 +26,7 @@ Code: [Construtor Zero source](src/ConstrutorZero)
   | [ABI audit](ABI-AUDIT-301.md)
   | [feature parity status](CONSTRUTOR-ZERO-PARITY.md).
 
-Last verified suite before candidate packaging: 136 simulated ABI/Harmony/network-contract checks
-(plus warning-free compilation); NOT a multiplayer gameplay certification.
+Test coverage now includes real-ABI-based fabricator UI gating, exact ItemId + TechType acknowledgement, UI deselection, race and disconnect cancellation, stale-locker quarantine, base/furniture flag restoration, geometry rollback and wall/ceiling snap. CI pass counts are reported by the final workflow run, not treated as a gameplay certification.
 
 ---
 
