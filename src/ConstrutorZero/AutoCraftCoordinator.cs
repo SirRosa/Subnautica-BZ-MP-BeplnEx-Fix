@@ -56,6 +56,11 @@ namespace Sirro.BZ.MP.ConstrutorZero
             if (!CraftingRecipeUnlocked(wanted))
                 return true;
 
+            // Creative and other no-cost modes must remain vanilla. The prefetch
+            // layer must never move player resources when crafting is free.
+            if (!RecipePrefetch.RequiresIngredientCosts())
+                return true;
+
             // When everything is already in the actual local inventory, vanilla
             // code should execute unchanged, with no new server requests.
             if (RecipePrefetch.InventoryHasCompleteRecipe(wanted))
