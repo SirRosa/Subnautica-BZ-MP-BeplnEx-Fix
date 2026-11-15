@@ -196,6 +196,9 @@ public static class Targeting
 }
 public static class Builder
 {
+    public static bool CanPlace = true;
+    public static bool canPlace => CanPlace;
+    public static int PlacementCalls = 0;
     public static bool isPlacing => ghostModel != null;
     public static TechType constructableTechType = TechType.None;
     public static UnityEngine.GameObject prefab { get; set; }
@@ -233,7 +236,7 @@ public static class Builder
     public static void CheckSpace(UnityEngine.Vector3 position, UnityEngine.Quaternion rot,
         List<object> bounds, int mask, object ignore, List<UnityEngine.GameObject> obstacles) {}
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static bool TryPlace() => true;
+    public static bool TryPlace() { PlacementCalls++; return CanPlace; }
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static void SetDefaultPlaceTransform(ref UnityEngine.Vector3 pos,
         ref UnityEngine.Quaternion rotation)
