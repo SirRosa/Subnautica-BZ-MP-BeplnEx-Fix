@@ -828,6 +828,23 @@ public static class Program
         Assert(Builder.CheckSpace(new Vector3(0,0,0),
             Quaternion.Euler(new Vector3(0,0,0)), new List<object>(), 0, null),
             "G overrides boolean CheckSpace for furniture overlap");
+
+        // G may bypass COLLISIONS, but cannot bypass the mounting surface.
+        // Test both within the same native placement-validation call.
+        Builder.SimulateSurfaceValidation = true;
+        Builder.constructableTechType = TechType.Locker;
+        Builder.allowedSurfaceTypes = new List<SurfaceType> { SurfaceType.Ground };
+        Physics.GroundAvailable = true;
+        Assert(Builder.UpdateAllowed() &&
+            ReferenceEquals(Builder.LastSubmoduleCollider, Physics.WorldFloor),
+            "G clips colliding furniture while keeping Locker physically floor-attached");
+        Physics.GroundAvailable = false;
+        Assert(!Builder.UpdateAllowed(),
+            "G cannot place a Locker in midair when no floor exists");
+        Physics.GroundAvailable = true;
+        Builder.SimulateSurfaceValidation = false;
+        Builder.constructableTechType = TechType.None;
+        Builder.allowedSurfaceTypes = new List<SurfaceType> { SurfaceType.Wall };
         Builder.CollisionSpaceAvailable = true;
         var obstaclesClipping = new List<GameObject> { new GameObject() };
         Builder.GetObstacles(new Vector3(0,0,0),
