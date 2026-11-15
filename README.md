@@ -1,3 +1,19 @@
+# Construtor Zero — development branch for Below Zero MP 3.0.1
+
+**DO NOT INSTALL: NOT READY FOR GAMEPLAY TESTS.** This branch integrates
+SnapBuilder and Building Tweaks porting work with the safe starting point for
+Craft From Containers. Full multiplayer feature parity is **not implemented**.
+
+Read the exhaustive [feature parity and network limitations](CONSTRUTOR-ZERO-PARITY.md)
+before assuming a CI success is game compatibility.
+
+The experimental Craft From Containers module never turns an unconfirmed
+storage transfer into a successful recipe consumption. This prevents free
+crafting/duplication but means automatic crafting from shared lockers is
+**not yet available**.
+
+---
+
 # Subnautica Below Zero Multiplayer 3.0.1 — native plugin ports
 
 Repozytorium eksperymentalnych wtyczek do multiplayera BOT Bensona **bez BepInEx i Nautilus**.
