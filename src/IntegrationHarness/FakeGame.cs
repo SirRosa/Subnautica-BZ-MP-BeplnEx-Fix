@@ -94,6 +94,21 @@ public static class CrafterLogic
     public static bool IsUnlocked = true;
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static bool IsCraftRecipeUnlocked(TechType techType) => IsUnlocked;
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static bool IsCraftRecipeFulfilled(TechType recipe)
+    {
+        if (!GameModeManager.CraftingRequiresResources) return true;
+        var required = new Dictionary<TechType,int>();
+        foreach (var ingredient in TechData.GetIngredients(recipe))
+        {
+            required.TryGetValue(ingredient.techType, out int current);
+            required[ingredient.techType] = current + ingredient.amount;
+        }
+        foreach (var part in required)
+            if (Inventory.main.GetPickupCount(part.Key) < part.Value)
+                return false;
+        return true;
+    }
 }
 public static class TechData
 {
@@ -116,6 +131,16 @@ public class uGUI_CraftingMenu
     public int CraftActionCalls;
     public int ExpandActions;
     public bool Closed;
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public bool ActionAvailable(Node node)
+    {
+        if (node == null) return false;
+        if (node.action == TreeAction.Expand) return true;
+        return node.action == TreeAction.Craft &&
+            CrafterLogic.IsCraftRecipeUnlocked(node.techType) &&
+            CrafterLogic.IsCraftRecipeFulfilled(node.techType);
+    }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     public void Action(Node node)
