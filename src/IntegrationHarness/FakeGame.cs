@@ -405,6 +405,10 @@ public class ConstructableBase
 }
 public class Constructable
 {
+    public static bool AllowPlacementFlags = true;
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static bool CheckFlags(bool inBase, bool inSub, bool outside,
+        bool underwater, UnityEngine.Vector3 point) => AllowPlacementFlags;
     public TechType techType = TechType.Locker;
     public UnityEngine.GameObject gameObject = new UnityEngine.GameObject();
     public float placeDefaultDistance = 2f;
@@ -432,6 +436,7 @@ public class FakePowerRelay
 }
 public class Creature {}
 public class BaseGhost {}
+public class SeaTruckSegment {}
 public class LifepodDrop {}
 public enum SurfaceType { Wall, Ceiling, Ground }
 
@@ -477,7 +482,8 @@ public static class Builder
     public static UnityEngine.Vector3 placePosition;
     public static UnityEngine.Quaternion placeRotation;
     public static bool allowedOnConstructables = false, allowedInBase = false,
-        allowedInSub = false, allowedOutside = false;
+        allowedInSub = false, allowedOutside = false,
+        allowedUnderwater = false;
     public static List<SurfaceType> allowedSurfaceTypes = new List<SurfaceType> { SurfaceType.Wall };
 
     [MethodImpl(MethodImplOptions.NoInlining)]
