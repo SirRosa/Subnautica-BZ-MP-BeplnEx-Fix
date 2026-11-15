@@ -155,8 +155,9 @@ namespace Sirro.BZ.MP.ConstrutorZero
             if (needed.Count == 0)
             {
                 var name = activeRecipeName;
+                int delivered = completed;
                 Reset();
-                report?.Invoke("Server delivered " + completed +
+                report?.Invoke("Server delivered " + delivered +
                     " ingredient(s) for " + name + ". You can now craft normally.");
             }
             return true;
