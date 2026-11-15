@@ -418,6 +418,22 @@ public static class Program
         Eq(pos.z,2.5f,"Native snap z");
         Eq(rot.eulerAngles.y,45f,"Rotation grid 45 degrees");
 
+        // Regression: Builder.prefab is a property in the test ABI and may be
+        // a property in the real BZ game; base modules must never be snapped.
+        var basePrefab = new GameObject();
+        basePrefab.AddComponent(new ConstructableBase());
+        Builder.prefab = basePrefab;
+        var basePosition = new Vector3(1.37f, 0f, 2.74f);
+        var baseRotation = Quaternion.Euler(new Vector3(0,43f,0));
+        Builder.SetPlaceOnSurface(hit, ref basePosition, ref baseRotation);
+        Eq(basePosition.x,1.37f,
+            "Base-piece prefab property bypasses position snap");
+        Eq(basePosition.z,2.74f,
+            "Base-piece position remains original network ghost position");
+        Eq(baseRotation.eulerAngles.y,43f,
+            "Base-piece rotation remains original network orientation");
+        Builder.prefab = box;
+
         Input.Held.Add(KeyCode.LeftControl);
         Input.Held.Add(KeyCode.LeftAlt);
         Time.frameCount++;
