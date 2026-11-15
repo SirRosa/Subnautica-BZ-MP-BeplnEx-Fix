@@ -16,15 +16,16 @@ These features passed only a simulated Unity/Harmony/MP integration harness;
 they have NOT been verified on a real 3.0.1 server or two game clients.
 
 Tests now simulate BOT Benson's construction Harmony prefixes, proving
-no construction packet is sent while resources are outstanding. The original
-SnapBuilder and Building Tweaks are still only partially ported; arbitrary
+no construction packet is sent while resources are outstanding. Regression fixes cover duplicate recipe ingredient rows, fast repeat-click races,
+and restoring temporary Builder surface permissions after construction.
+The original SnapBuilder and Building Tweaks are still only partially ported; arbitrary
 moving-parent attachment is not supported without a new server protocol.
 
 Code: [Construtor Zero source](src/ConstrutorZero)
   | [ABI audit](ABI-AUDIT-301.md)
   | [feature parity status](CONSTRUTOR-ZERO-PARITY.md).
 
-Last confirmed suite at this stage: 99 simulated/contract checks
+Last verified suite: 122 simulated ABI/Harmony/network-contract checks
 (plus warning-free compilation); NOT a multiplayer gameplay certification.
 
 ---
