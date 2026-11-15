@@ -254,6 +254,74 @@ public static class Program
             "No fake network packet when storage handler is unavailable");
         Subnautica.Events.Handlers.Storage.HasStorageHandler = true;
 
+        // Missing building materials use the SAME authoritative transfer queue,
+        // but never call Builder.TryPlace until the exact selected ghost pose is
+        // unchanged and all materials exist in the actual local inventory.
+        Inventory.main.ActualItems.Clear();
+        autoLocker.container.Clear();
+        var buildFirst = new InventoryItem { item = new Pickupable {
+            techType = TechType.Titanium, gameObject = new GameObject { name = "item-g" } } };
+        var buildSecond = new InventoryItem { item = new Pickupable {
+            techType = TechType.Titanium, gameObject = new GameObject { name = "item-h" } } };
+        autoLocker.container.Add(buildFirst);
+        autoLocker.container.Add(buildSecond);
+        var autoBuildField = confType.GetField("AutoBuildEnabled",
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+        var autoPlaceField = confType.GetField("AutoPlaceAfterPrefetch",
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+        autoBuildField.SetValue(null, true);
+        autoPlaceField.SetValue(null, true);
+        Builder.constructableTechType = TechType.TestRecipe;
+        Builder.placePosition = new Vector3(5, 6, 7);
+        Builder.placeRotation = Quaternion.Euler(new Vector3(0, 90, 0));
+        Builder.CanPlace = true;
+        Builder.PlacementCalls = 0;
+        Assert(!Builder.TryPlace(), "Initial building action deferred before any resource consumption");
+        Assert(Builder.PlacementCalls == 0,
+            "Vanilla Builder.TryPlace never runs before all server receipts");
+        var autoBuildType = plugin.GetType().Assembly.GetType(
+            "Sirro.BZ.MP.ConstrutorZero.AutoBuildCoordinator", true);
+        var buildWaiting = autoBuildType.GetProperty("IsWaiting",
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+        Assert((bool)buildWaiting.GetValue(null),
+            "Building prefetch waits with original construction pose recorded");
+        Time.frameCount++;
+        Player.main.Update();
+        Assert(Builder.PlacementCalls == 0,
+            "Builder placement remains deferred until ingredient acknowledgement");
+        Inventory.main.OnAddItem(buildFirst);
+        autoLocker.container.Remove(buildFirst);
+        Time.frameCount++;
+        Player.main.Update();
+        Assert(Builder.PlacementCalls == 0,
+            "Partial server delivery cannot construct the object");
+        Inventory.main.OnAddItem(buildSecond);
+        Time.frameCount++;
+        Player.main.Update();
+        Assert(Builder.PlacementCalls == 1,
+            "Vanilla multiplayer Builder.TryPlace replayed after two ingredient receipts");
+        Assert(!(bool)buildWaiting.GetValue(null), "Auto build state reset after placement");
+        Time.frameCount++;
+        Player.main.Update();
+        Assert(Builder.PlacementCalls == 1, "Auto build cannot place duplicates");
+
+        Inventory.main.ActualItems.Clear();
+        Builder.placePosition = new Vector3(5, 6, 7);
+        Builder.placeRotation = Quaternion.Euler(new Vector3(0, 90, 0));
+        Assert(!Builder.TryPlace(), "Second construction attempt staged");
+        Builder.placePosition = new Vector3(6, 6, 7);
+        int countBeforePoseChange = Subnautica.Events.Handlers.Storage.NetworkRequests;
+        Time.frameCount++;
+        Player.main.Update();
+        Assert(!(bool)buildWaiting.GetValue(null),
+            "Moving the construction ghost cancels delayed placement");
+        Assert(Builder.PlacementCalls == 1 &&
+            Subnautica.Events.Handlers.Storage.NetworkRequests == countBeforePoseChange,
+            "Changed construction pose sends no further packet or placement");
+        autoBuildField.SetValue(null, false);
+        autoPlaceField.SetValue(null, false);
+        Builder.constructableTechType = TechType.None;
+
         var hit = new RaycastHit { normal = new Vector3(0,1,0), transform = new Transform() };
         var pos = new Vector3(1.37f, 0f, 2.74f);
         var rot = Quaternion.Euler(new Vector3(0,43f,0));
