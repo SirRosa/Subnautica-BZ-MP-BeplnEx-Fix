@@ -51,7 +51,7 @@ jobs:
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item "src/ConstrutorZero/bin/Release/net472/Sirro.BZ.MP.ConstrutorZero.dll" dist/
           @"
-          CONSTRUTOR ZERO v0.3.3-rc4 -- TERRAIN + CFC UI PERFORMANCE CANDIDATE
+          CONSTRUTOR ZERO v0.3.4-rc5 -- PHYSICAL FLOOR/WALL SURFACE LOCK CANDIDATE
           BOT Benson Below Zero Multiplayer 3.0.1. Client plugin only.
           
           ALL TESTS IN CI ARE ABI CONTRACT OR SIMULATED NETWORK TESTS.
@@ -82,6 +82,13 @@ jobs:
           - Pinned and fabricator tooltips display nearby ingredients green
           - Normal CFC transfer messages are silent on HUD by default
           - Actual auto-build action refreshes stock and blocks unsafe no-resource packets
+          - Correct native OrientedBounds.position/extents (GetCorners is NOT an instance method)
+          - When vanilla camera ray is invalid, independently raycast legal ground or wall
+          - Preserve BZ CheckAsSubModule(out Collider) for subsequent collision validation
+          - Recheck full BZ Constructable.CheckFlags, distance, tags, underwater, vehicle,
+            valid mounting surface and collision instead of faking placement success
+          - With G: clip furniture obstacles but NEVER allow floating furniture
+          - Hold last ground/wall position visually (invalid for building) if ray is lost
           
           ALL AUTO TRANSFERS ARE DISABLED BY DEFAULT:
           %APPDATA%\.botbenson\Subnautica Below Zero\Game\Config\ConstrutorZero.Containers.ini
@@ -105,18 +112,20 @@ jobs:
           - An ACKed item ID cannot be re-requested until client rejoins
           - UI availability is advisory: server may reject a stale item
           
-          See PLACEMENT-UI-301.md for current install and mandatory 2-client tests.
+          See SURFACE-LOCK-301.md for current install and mandatory 2-client tests.
+          See PLACEMENT-UI-301.md for prior CFC UI improvements.
           See STABILIZATION-301.md for background limitations.
           Stop immediately if either player detects duplicate/lost items or desync.
           Preserve the server and BOTH client logs plus a backup of the world.
           
           Source commit: ${{ github.sha }}
-          "@ | Set-Content "dist/README-PLACEMENT-UI.txt"
+          "@ | Set-Content "dist/README-SURFACE-LOCK.txt"
+          Copy-Item "SURFACE-LOCK-301.md" "dist/SURFACE-LOCK-301.md"
           Copy-Item "PLACEMENT-UI-301.md" "dist/PLACEMENT-UI-301.md"
-          Compress-Archive -Path "dist/Sirro.BZ.MP.ConstrutorZero.dll", "dist/README-PLACEMENT-UI.txt", "dist/PLACEMENT-UI-301.md" -DestinationPath "dist/Construtor-Zero-0.3.3-rc4.zip" -Force
+          Compress-Archive -Path "dist/Sirro.BZ.MP.ConstrutorZero.dll", "dist/README-SURFACE-LOCK.txt", "dist/SURFACE-LOCK-301.md", "dist/PLACEMENT-UI-301.md" -DestinationPath "dist/Construtor-Zero-0.3.4-rc5.zip" -Force
           Get-FileHash "dist/Sirro.BZ.MP.ConstrutorZero.dll" -Algorithm SHA256 | Format-List
-          Get-Item "dist/Construtor-Zero-0.3.3-rc4.zip" | Format-List Name,Length
+          Get-Item "dist/Construtor-Zero-0.3.4-rc5.zip" | Format-List Name,Length
       - uses: actions/upload-artifact@v4
         with:
-          name: Construtor-Zero-0.3.3-rc4
-          path: dist/Construtor-Zero-0.3.3-rc4.zip
+          name: Construtor-Zero-0.3.4-rc5
+          path: dist/Construtor-Zero-0.3.4-rc5.zip
