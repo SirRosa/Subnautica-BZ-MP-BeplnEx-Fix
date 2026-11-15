@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <AssemblyName>Sirro.BZ.MP.NativeSnapBuilder</AssemblyName>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Contracts/Subnautica.API.Contract.csproj" />
+  </ItemGroup>
+</Project>
