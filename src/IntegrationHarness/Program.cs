@@ -907,6 +907,11 @@ public static class Program
             techType = TechType.Locker, gameObject = Physics.WorldFurniture.gameObject });
         Physics.FurnitureAvailable = true;
         Builder.allowedOnConstructables = true;
+        // Use an in-range height during forward/back stability checks.
+        // At near-max distance a very high look angle naturally puts the
+        // target out of Builder.placeMaxDistance; that is a reach limit,
+        // not a change of the grid's fixed world origin.
+        MainCamera.camera.transform.forward = new Vector3(0f,.5f,.866f);
         MainCamera.camera.transform.position = new Vector3(1.37f,2.5f,0f);
         Physics.WallHitTransformOffset = 0f;
         Assert(Builder.UpdateAllowed() &&
