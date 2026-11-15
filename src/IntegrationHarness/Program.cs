@@ -355,6 +355,16 @@ public static class Program
             Builder.PlacementCalls == 0 &&
             Subnautica.Events.Handlers.Storage.NetworkRequests == countBeforePoseChange,
             "Changed construction pose sends no further MP packet or placement");
+        Builder.CanPlace = false;
+        var buildPrefix = autoBuildType.GetMethod("Prefix",
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+        int beforeInvalid = Subnautica.Events.Handlers.Storage.NetworkRequests;
+        Assert((bool)buildPrefix.Invoke(null, new object[] { false }),
+            "Invalid ghost placement passes through original game's rejection path");
+        Assert(!(bool)buildWaiting.GetValue(null) &&
+            Subnautica.Events.Handlers.Storage.NetworkRequests == beforeInvalid,
+            "No container transfers or deferred construction for invalid placement");
+        Builder.CanPlace = true;
         autoBuildField.SetValue(null, false);
         autoPlaceField.SetValue(null, false);
         Builder.constructableTechType = TechType.None;
