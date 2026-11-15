@@ -744,6 +744,19 @@ public static class Program
         Eq(Builder.placePosition.z,gluedZ,
             "Camera pitch does not move Locker along Z");
 
+        // In real BZ a steep downward ray can make the original
+        // CheckAsSubModule RETURN TRUE while leaving the camera-oriented
+        // ghost at an incorrect Y. Our override MUST execute even then.
+        Builder.SimulateVanillaCameraHit = true;
+        Builder.placePosition = new Vector3(0f,8f,0f);
+        Assert(Builder.UpdateAllowed(),
+            "Ground-anchor overrides even successful vanilla downward-ray branch");
+        Eq(Builder.placePosition.y,1.25f,
+            "Vanilla success at camera Y=5.7 cannot detach floor Locker");
+        Assert(ReferenceEquals(Builder.LastSubmoduleCollider, Physics.WorldFloor),
+            "Correct floor collider supersedes successful pitched camera ray");
+        Builder.SimulateVanillaCameraHit = false;
+
         Physics.FloorHeight = -1f;
         Assert(!Builder.UpdateAllowed(),
             "Floor below original builder max range cannot be used by a longer downward ray");
@@ -791,6 +804,57 @@ public static class Program
             "Real wall collider propagates through CheckAsSubModule OUT argument");
         Eq(Builder.placePosition.y,2.5f,
             "Wall-only furniture attaches at wall hit height");
+
+        // A nearby floor Locker now sits IN FRONT of the actual base wall.
+        // The wall-only item must prefer the physical wall regardless of
+        // which collider is returned nearest by Unity's Physics.RaycastAll.
+        Physics.WorldFurniture.gameObject.AddComponent(new Constructable {
+            techType = TechType.Locker, gameObject = Physics.WorldFurniture.gameObject });
+        Physics.FurnitureAvailable = true;
+        Builder.allowedOnConstructables = true;
+        MainCamera.camera.transform.position = new Vector3(1.37f,2.5f,0f);
+        Physics.WallHitTransformOffset = 0f;
+        Assert(Builder.UpdateAllowed() &&
+            ReferenceEquals(Builder.LastSubmoduleCollider, Physics.WorldWall),
+            "Wall-mounted furniture prefers structural wall behind nearby locker");
+        Eq(Builder.placePosition.x,1.5f,
+            "Wall grid uses world-anchored 0.5m tangent slot");
+        var wallSnappedX = Builder.placePosition.x;
+        var wallSnappedY = Builder.placePosition.y;
+        var wallSnappedZ = Builder.placePosition.z;
+        for (int i = 0; i < 3; i++)
+        {
+            // Player walks forward/back relative to one static base wall;
+            // different hit child transforms must not rebase the grid.
+            MainCamera.camera.transform.position = new Vector3(
+                1.37f,2.5f, i == 0 ? .2f : (i == 1 ? -.2f : 0f));
+            Physics.WallHitTransformOffset = i == 0 ? 3.37f :
+                (i == 1 ? -1.27f : 0.75f);
+            Builder.placePosition = new Vector3(0f,8f,0f);
+            Assert(Builder.UpdateAllowed() &&
+                ReferenceEquals(Builder.LastSubmoduleCollider, Physics.WorldWall),
+                "Forward/backward motion still targets original structural wall");
+            Eq(Builder.placePosition.x,wallSnappedX,
+                "Forward/backward walking never shifts world-anchored wall grid X");
+            Eq(Builder.placePosition.y,wallSnappedY,
+                "Forward/backward walking never shifts world-anchored wall grid Y");
+            Eq(Builder.placePosition.z,wallSnappedZ,
+                "Forward/backward walking never shifts wall-normal depth");
+        }
+        Physics.WallHitTransformOffset = 0f;
+        MainCamera.camera.transform.position = new Vector3(0f,2.5f,0f);
+
+        // Secondary furniture-to-furniture attachment remains possible
+        // only if Builder.allowedOnConstructables explicitly permits it.
+        Physics.WallAvailable = false;
+        Assert(Builder.UpdateAllowed() &&
+            ReferenceEquals(Builder.LastSubmoduleCollider, Physics.WorldFurniture),
+            "Wall-attached object can secondarily snap to a locker when allowed");
+        Builder.allowedOnConstructables = false;
+        Assert(!Builder.UpdateAllowed(),
+            "Without explicit permission furniture collider cannot replace a wall");
+        Physics.FurnitureAvailable = false;
+        Builder.allowedOnConstructables = false;
         Physics.WallAvailable = false;
 
         // Room/base modules still belong to the original multiplayer
