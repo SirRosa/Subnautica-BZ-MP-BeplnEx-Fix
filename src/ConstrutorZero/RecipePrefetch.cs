@@ -48,7 +48,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
         {
             if (IsActive || recipeType == null) return false;
             if (!CraftFromContainersBridge.NetworkActive || !ContainerConfig.Enabled ||
-                !(ContainerConfig.ManualPrefetchEnabled || ContainerConfig.AutoCraftEnabled))
+                !(ContainerConfig.ManualPrefetchEnabled || ContainerConfig.AutoCraftEnabled ||
+                  ContainerConfig.AutoBuildEnabled))
                 return false;
             try
             {
@@ -207,6 +208,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 int delivered = completed;
                 Reset();
                 AutoCraftCoordinator.IngredientsDelivered();
+                AutoBuildCoordinator.IngredientsDelivered();
                 report?.Invoke("Server delivered " + delivered +
                     " ingredient(s) for " + name + ". You can now craft normally.");
             }
