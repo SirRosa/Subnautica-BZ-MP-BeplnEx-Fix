@@ -147,6 +147,19 @@ public static class Program
         Assert(!(bool)active.GetValue(null), "Recipe transfer queue completed safely");
         Assert(Inventory.main.GetPickupCount(TechType.Titanium) == 0,
             "Plugin never falsifies client ingredient counts after delivery");
+        var currentContext = tracker.GetMethod("BeginCurrentContext",
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+        var cancel = tracker.GetMethod("Cancel",
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+        Builder.constructableTechType = TechType.TestRecipe;
+        Assert((bool)currentContext.Invoke(null, new object[] { log }),
+            "Building recipe ingredients can be obtained from live Builder context");
+        Assert((bool)active.GetValue(null), "Building prefetch is an explicit queued operation");
+        Assert(Subnautica.Events.Handlers.Storage.NetworkRequests == 3,
+            "Merely selecting a building recipe sends no storage packet");
+        cancel.Invoke(null, new object[] { "cancel builder", log });
+        Assert(!(bool)active.GetValue(null), "Builder prefetch can be cancelled without item mutations");
+        Builder.constructableTechType = TechType.None;
         recipe.UpdateIngredients(null, false);
         Assert((bool)start.Invoke(null, new object[] { log }),
             "Another prefetch can be prepared after prior completion");
