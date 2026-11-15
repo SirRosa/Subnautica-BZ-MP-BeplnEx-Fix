@@ -243,7 +243,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
                     RecipePrefetch.Cancel("Recipe prefetch cancelled by user", Info);
                     return;
                 }
-                if (RecipePrefetch.BeginLastObserved(Info))
+                if (RecipePrefetch.BeginCurrentContext(Info))
                     RecipePrefetch.Pump(Info);
                 else if (lastRequestedTechType != null)
                     Trace.Info("CFC: last vanilla inventory query was " + lastRequestedTechType);
