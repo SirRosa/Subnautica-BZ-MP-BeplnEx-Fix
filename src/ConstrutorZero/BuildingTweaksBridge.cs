@@ -63,6 +63,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 Hook("Builder", "Update", null, nameof(UpdatePostfix));
                 Hook("Builder", "End", null, nameof(EndPostfix));
                 Hook("Builder", "CreateGhost", null, nameof(CreateGhostPostfix));
+                Hook("Targeting", "GetTarget", nameof(TargetingRangePrefix), null);
                 Hook("Builder", "UpdateAllowed", nameof(UpdateAllowedPrefix), nameof(UpdateAllowedPostfix));
                 Hook("Builder", "ValidateOutdoor", null, nameof(AllowedPostfix));
                 Hook("Builder", "GetObstacles", null, nameof(GetObstaclesPostfix));
@@ -218,6 +219,23 @@ namespace Sirro.BZ.MP.ConstrutorZero
             // repeatedly during a placement. Recapturing multiplied distances would
             // make the range grow exponentially each frame.
             UpdateRanges();
+        }
+
+        private static void TargetingRangePrefix(object[] __args)
+        {
+            // BZ Targeting.GetTarget(float, out GameObject, out float):
+            // This changes only a local targeting ray distance, not a network
+            // construction ID or authoritative object transform.
+            if (!extendedRange || __args == null || __args.Length != 3 ||
+                !(__args[0] is float distance)) return;
+            try
+            {
+                var builder = Reflect.Type("Builder");
+                var placing = Value(builder, "isPlacing");
+                if (!(placing is bool) || !(bool)placing) return;
+                __args[0] = Math.Max(0f, distance) * activeRange;
+            }
+            catch (Exception e) { LogOnce("TARGETING_RANGE", e); }
         }
 
         private static void UpdateRanges()
