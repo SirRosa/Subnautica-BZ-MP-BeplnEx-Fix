@@ -207,9 +207,23 @@ namespace Sirro.BZ.MP.ConstrutorZero
                         "Extended build range " + (extendedRange ? "ON" : "OFF")); }
                     if (Down("KeypadDivide"))
                     {
-                        frozen = !frozen;
-                        freezeInitialized = false;
-                        Announce("Free placement " + (frozen ? "ON" : "OFF"));
+                        if (IsMultiplayer())
+                        {
+                            // Builder.Update has already calculated collision
+                            // and canPlace. Mutating placePosition in a postfix
+                            // would send a ghost pose that was NOT validated by
+                            // the game, and could desync the server/client.
+                            frozen = false;
+                            freezeInitialized = false;
+                            Announce("Free placement disabled in multiplayer: " +
+                                "ghost collision validation would be stale");
+                        }
+                        else
+                        {
+                            frozen = !frozen;
+                            freezeInitialized = false;
+                            Announce("Free placement " + (frozen ? "ON" : "OFF"));
+                        }
                     }
                 }
                 if (extendedRange)
@@ -218,6 +232,11 @@ namespace Sirro.BZ.MP.ConstrutorZero
                     if (Held("Mouse3")) activeRange = Math.Max(1f, activeRange - .02f);
                 }
                 UpdateRanges();
+                if (frozen && IsMultiplayer())
+                {
+                    frozen = false;
+                    freezeInitialized = false;
+                }
                 if (frozen) UpdateFreePlacement(builder);
             }
             catch (Exception e) { LogOnce("BUILDER_UPDATE", e); }
