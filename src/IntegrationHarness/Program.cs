@@ -494,6 +494,35 @@ public static class Program
             "Placing a held item restores quick-slot hotkeys");
         placeTool.LateUpdate();
 
+        // Regression: two ingredient entries using the same TechType must not
+        // independently subtract the current inventory twice.
+        var fullRecipe = tracker.GetMethod("InventoryHasCompleteRecipe",
+            BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+        var beginRecipe = tracker.GetMethod("Begin",
+            BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+        var remaining = tracker.GetProperty("Remaining",
+            BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+        Inventory.main.ActualItems[TechType.Titanium] = 1;
+        manual.SetValue(null, true);
+        Assert(!(bool)fullRecipe.Invoke(null,
+                new object[] { TechType.DuplicateIngredientRecipe }),
+            "Duplicate ingredient rows require all three units, not two");
+        Assert((bool)beginRecipe.Invoke(null, new object[] {
+                TechType.DuplicateIngredientRecipe, log }),
+            "Duplicate ingredient recipe plans missing materials");
+        Assert((int)remaining.GetValue(null) == 2,
+            "Three required minus one owned schedules exactly two transfers");
+        cancel.Invoke(null, new object[] { "end duplicate test", log });
+        Inventory.main.ActualItems[TechType.Titanium] = 2;
+        Assert(!(bool)fullRecipe.Invoke(null,
+                new object[] { TechType.DuplicateIngredientRecipe }),
+            "Duplicate ingredient recipe still incomplete at two of three units");
+        Inventory.main.ActualItems[TechType.Titanium] = 3;
+        Assert((bool)fullRecipe.Invoke(null,
+                new object[] { TechType.DuplicateIngredientRecipe }),
+            "Duplicate ingredient recipe succeeds only at three actual units");
+        manual.SetValue(null, false);
+
         plugin.OnDisabled();
         Assert(!Inventory.main.quickSlots.HotkeysIgnored,
             "Plugin unload restores quick-slot hotkeys");
