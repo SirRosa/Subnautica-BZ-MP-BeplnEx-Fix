@@ -35,6 +35,9 @@ namespace Sirro.BZ.MP.ConstrutorZero
         // authoritative server is processing the previous request.
         private static readonly Dictionary<string, DateTime> PendingItemIds =
             new Dictionary<string, DateTime>(StringComparer.Ordinal);
+        // UI stock snapshots skip already-requested item wrappers cheaply.
+        // Network transfers remain guarded by persistent unique item IDs.
+        private static readonly HashSet<object> PendingPickups = new HashSet<object>();
         // UI affordability is advisory only. It must never inflate inventory
         // counts or bypass vanilla resource consumption.
         private static readonly Dictionary<object, int> UiAvailableCache =
@@ -58,7 +61,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
             // packet updates it, and would otherwise be requested twice.
             // Keep this identity quarantined for the current session,
             // even after ACK; a stale locker object must never submit it again.
-            UiAvailableCache.Clear();
+            InvalidateUiCache();
         }
         private static int lastTransferFrame = -1;
         private static int lastPruneFrame = -1;
@@ -181,7 +184,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
             RecipePrefetch.Reset();
             Storage.Clear();
             PendingItemIds.Clear();
-            UiAvailableCache.Clear();
+            PendingPickups.Clear();
+            InvalidateUiCache();
             uiCacheCreatedUtc = default(DateTime);
             lastSentItemId = null;
             lastRequestedTechType = null;
@@ -202,13 +206,13 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 {
                     if (contents == null)
                     {
-                        if (Storage.Remove(root)) UiAvailableCache.Clear();
+                        if (Storage.Remove(root)) InvalidateUiCache();
                     }
                     else if (!Storage.TryGetValue(root, out var existing) ||
                              !ReferenceEquals(existing, contents))
                     {
                         Storage[root] = contents;
-                        UiAvailableCache.Clear();
+                        InvalidateUiCache();
                     }
                 }
             }
@@ -392,7 +396,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
             try { AutoCraftCoordinator.Reset(); } catch { }
             try { AutoBuildCoordinator.Reset(); } catch { }
             try { RecipePrefetch.Reset(); } catch { }
-            UiAvailableCache.Clear();
+            InvalidateUiCache();
             lastSentItemId = null;
             // Do not clear PendingItemIds. A packet may still be in flight:
             // clearing would allow a second request against stale storage.
@@ -447,7 +451,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
             var unityTimeType = Reflect.Type("UnityEngine.Time");
             var currentFrame = Convert.ToInt32(Get(unityTimeType, "frameCount") ?? 0);
             if (lastPruneFrame < 0 || currentFrame < lastPruneFrame ||
-                currentFrame - lastPruneFrame >= 240)
+                currentFrame - lastPruneFrame >= 900)
             {
                 lastPruneFrame = currentFrame;
                 DiscoverSceneStorages();
@@ -463,7 +467,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 RecipePrefetch.Cancel("Multiplayer disconnected; requests cancelled", Info);
                 // An item ID may be requested again only in a new session.
                 PendingItemIds.Clear();
-                UiAvailableCache.Clear();
+                PendingPickups.Clear();
+                InvalidateUiCache();
                 uiCacheCreatedUtc = default(DateTime);
                 lastSentItemId = null;
                 return;
@@ -585,7 +590,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
                             return false;
                         }
                         PendingItemIds[itemId] = now;
-                        UiAvailableCache.Clear();
+                        PendingPickups.Add(pickup);
+                        InvalidateUiCache();
                         lastSentItemId = itemId;
                         Trace.Info("CFC_SERVER_TRANSFER_REQUEST: " + wantedTechType +
                             ", item=" + itemId + ", locker=" + containerId);
@@ -608,91 +614,63 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 wantedTechType == null) return 0;
             try
             {
-                // The fabricator probes ActionAvailable repeatedly while
-                // navigating a recipe tree. Invalidating on EVERY frame
-                // previously enumerated every item in every locker dozens
-                // of times per second, causing ~1s UI freezes in large bases.
-                // This is ADVISORY UI stock only; a real transfer still
-                // validates the exact server-approved item ID.
-                var now = DateTime.UtcNow;
+                // Fabricator probes ActionAvailable for many recipes per
+                // selection. Count all types in ONE snapshot, not by walking
+                // every locker separately for every candidate ingredient.
                 if (uiCacheCreatedUtc == default(DateTime) ||
-                    now - uiCacheCreatedUtc >= UiCacheLifetime)
-                {
-                    uiCacheCreatedUtc = now;
-                    UiAvailableCache.Clear();
-                }
-                if (UiAvailableCache.TryGetValue(wantedTechType, out var cached))
-                    return cached;
-                // Pruning and scene discovery run from Player.Update at a
-                // bounded cadence, never synchronously in UI recipe callbacks.
-                var player = Reflect.Type("Player");
-                var origin = Get(Get(player, "main"), "transform");
-                var position = Get(origin, "position");
-                var network = typeof(Subnautica.API.Features.SubnauticaPlugin).Assembly
-                    .GetType("Subnautica.API.Features.Network");
-                var identifier = Get(network, "Identifier");
-                if (position == null || identifier == null) return 0;
-
-                int count = 0;
-                bool hasReservedIds = PendingItemIds.Count > 0;
-                var seen = hasReservedIds ?
-                    new HashSet<string>(StringComparer.Ordinal) : null;
-                foreach (var kv in Storage)
-                {
-                    var root = kv.Key;
-                    var container = kv.Value;
-                    if (root == null || container == null ||
-                        Distance(position, Get(Get(root, "transform") ?? root, "position")) >
-                            ContainerConfig.RangeMeters) continue;
-
-                    if (!ResolveLocker(root, container, identifier,
-                        out _, out _)) continue;
-
-                    if (!hasReservedIds)
-                    {
-                        // Native ItemsContainer.GetCount(TechType) is much
-                        // cheaper than creating and reflecting every
-                        // InventoryItem / UniqueIdentifier in a packed base.
-                        var getCount = container.GetType().GetMethods(All)
-                            .FirstOrDefault(m => m.Name == "GetCount" &&
-                                m.GetParameters().Length == 1 &&
-                                m.GetParameters()[0].ParameterType
-                                    .IsInstanceOfType(wantedTechType));
-                        if (getCount != null)
-                        {
-                            count += Math.Max(0, Convert.ToInt32(
-                                getCount.Invoke(container, new[] { wantedTechType }),
-                                CultureInfo.InvariantCulture));
-                            if (count >= 80) break;
-                            continue;
-                        }
-                    }
-
-                    // Only the fallback / pending-ID path needs to inspect
-                    // item identities. Requested items remain quarantined
-                    // despite any stale UI-side locker representation.
-                    foreach (var item in ItemsOfType(container, wantedTechType))
-                    {
-                        var pickup = Get(item, "item");
-                        if (pickup == null ||
-                            !Equals(GetTechType(pickup), wantedTechType)) continue;
-                        var id = GetIdentity(identifier, Get(pickup, "gameObject"));
-                        if (!string.IsNullOrWhiteSpace(id) &&
-                            !PendingItemIds.ContainsKey(id) &&
-                            (seen == null || seen.Add(id)))
-                            count++;
-                        if (count >= 80) break;
-                    }
-                    if (count >= 80) break;
-                }
-                UiAvailableCache[wantedTechType] = count;
-                return count;
+                    DateTime.UtcNow - uiCacheCreatedUtc >= UiCacheLifetime)
+                    RefreshUiStockSnapshot();
+                return UiAvailableCache.TryGetValue(wantedTechType, out var n) ? n : 0;
             }
-            catch (Exception e)
+            catch (Exception ex)
             {
                 Once("CFC_UI_AVAILABILITY_FAILED: " +
-                    (e.InnerException ?? e).Message);
+                    (ex.InnerException ?? ex).Message);
                 return 0;
+            }
+        }
+
+        private static void InvalidateUiCache()
+        {
+            UiAvailableCache.Clear();
+            uiCacheCreatedUtc = default(DateTime);
+        }
+
+        private static void RefreshUiStockSnapshot()
+        {
+            UiAvailableCache.Clear();
+            uiCacheCreatedUtc = DateTime.UtcNow;
+            var player = Reflect.Type("Player");
+            var origin = Get(Get(player, "main"), "transform");
+            var position = Get(origin, "position");
+            var network = typeof(Subnautica.API.Features.SubnauticaPlugin)
+                .Assembly.GetType("Subnautica.API.Features.Network");
+            var identifier = Get(network, "Identifier");
+            if (position == null || identifier == null) return;
+
+            foreach (var entry in Storage)
+            {
+                var root = entry.Key;
+                var container = entry.Value;
+                if (root == null || container == null ||
+                    Distance(position, Get(Get(root, "transform") ?? root, "position")) >
+                        ContainerConfig.RangeMeters) continue;
+                if (!ResolveLocker(root, container, identifier, out _, out _))
+                    continue;
+
+                // BZ ItemsContainer implements IEnumerable<InventoryItem>.
+                // Enumerate ONCE for every material type without per-item
+                // network identity reflection (only actual transfers need it).
+                if (!(container is IEnumerable inventoryItems)) continue;
+                foreach (var item in inventoryItems)
+                {
+                    var pickup = Get(item, "item");
+                    if (pickup == null || PendingPickups.Contains(pickup)) continue;
+                    var techType = GetTechType(pickup);
+                    if (techType == null) continue;
+                    UiAvailableCache.TryGetValue(techType, out var current);
+                    if (current < 80) UiAvailableCache[techType] = current + 1;
+                }
             }
         }
 
