@@ -234,9 +234,19 @@ namespace Sirro.BZ.MP.ConstrutorZero
                     StorageAwake(component);
                     count++;
                 }
+                var network = typeof(Subnautica.API.Features.SubnauticaPlugin)
+                    .Assembly.GetType("Subnautica.API.Features.Network");
+                var identifier = Get(network, "Identifier");
+                int supported = 0;
+                foreach (var source in Storage.ToArray())
+                {
+                    if (ResolveLocker(source.Key, source.Value, identifier,
+                        out _, out _)) supported++;
+                }
                 Trace.Info("CFC_STORAGE_SCAN: scene_containers=" + count +
                     ", registered=" + Storage.Count +
-                    " (supported transfer: Locker/SmallLocker only)");
+                    ", supported_lockers=" + supported +
+                    " (only Locker/SmallLocker use this server protocol)");
             }
             catch (Exception ex)
             {
