@@ -107,6 +107,47 @@ its patch classes include `Inventory_GetPickupCount_Patch`,
 success; in the multiplayer 3.0.1 server's locker transfer path this must
 not be replicated before authoritative acknowledgement.
 
-**Current gate:** the updated CI harness has 50 passing ABI-fixture and
-simulated Harmony tests. It is not a two-client integration test and does
+**Current gate:** the updated CI harness has 99 passing ABI-fixture and
+simulated Harmony + network-prefix tests. It is not a two-client integration test and does
 not establish that every original feature is available.
+
+## 2026-11-15: Craft UI and construction prefix ordering
+
+Confirmed in the user's Assembly-CSharp.dll:
+
+```csharp
+void uGUI_CraftingMenu.Action(uGUI_CraftingMenu.Node node);
+// node has action: TreeAction (None, Expand, Craft), techType: TechType
+void Inventory.OnAddItem(InventoryItem item);
+void Inventory.ConsumeResourcesForRecipe(TechType type, AnimationDone callback);
+```
+
+The shipped Subnautica.Events.dll references Harmony 2.3.3 and contains
+`Subnautica.Events.Handlers.Building.OnConstructingGhostTryPlacing`.
+The public multiplayer source (which may be older than 3.0.1) uses two
+Harmony prefixes for `Builder.TryPlace`:
+
+- Identity assignment: `ConstructingGhostTryPlacing.Prefix`,
+  `HarmonyPriority(Priority.First)` = 800
+- Network construction packet: `ConstructionGhostTryPlacing.Prefix`,
+  normal priority, returns false to suppress vanilla singleplayer placement
+
+**Critical integration hazard:** suppressing original `Builder.TryPlace` does
+not itself suppress multiplayer's prefix. The Construtor Zero ingredient
+guard now explicitly runs at priority 1000, *ahead of both* prefixes.
+
+The `FakeMultiplayerConstruction` harness installs BOT Benson-like
+prefixes BEFORE loading Construtor Zero, then asserts:
+
+1. **0 construction packets** when missing materials cause first-click defer
+2. **0 packets** after the first of two required ingredients arrives
+3. **exactly 1 packet** after both materials arrive and the original
+   `Builder.TryPlace` interception is replayed
+4. **0 additional packets** after ghost movement or duplicate frame updates
+5. Other multiplayer Harmony patches persist when Construtor Zero unloads
+
+Result: 99/99 simulated checks in GitHub Actions run 43733688439.
+
+**Limitations:** the harness is a controlled imitation of the multiplayer's
+event prefix, not a running dedicated server. A real two-client replay,
+save/rejoin and simultaneous construction test remains mandatory for release.
