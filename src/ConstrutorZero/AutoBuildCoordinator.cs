@@ -38,7 +38,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 __result = false;
                 return false;
             }
-            if (!ContainerConfig.Enabled ||
+            if (!CraftFromContainersBridge.Ready || !ContainerConfig.Enabled ||
                 !ContainerConfig.AutoBuildEnabled || !CraftFromContainersBridge.NetworkActive)
                 return true;
             try
