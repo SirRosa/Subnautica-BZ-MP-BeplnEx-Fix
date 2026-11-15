@@ -242,6 +242,18 @@ public static class Program
             "Cancelled deferred craft cannot replay after closing UI");
         autoField.SetValue(null, false);
 
+        autoLocker.container.Clear();
+        autoLocker.container.Add(new InventoryItem { item = new Pickupable {
+            techType = TechType.Titanium,
+            gameObject = new GameObject { name = "item-f" } } });
+        int beforeUnavailable = Subnautica.Events.Handlers.Storage.NetworkRequests;
+        Subnautica.Events.Handlers.Storage.HasStorageHandler = false;
+        Assert(!(bool)requestOne.Invoke(null, new object[] { TechType.Titanium }),
+            "Missing multiplayer storage processor does not count as a transfer request");
+        Assert(Subnautica.Events.Handlers.Storage.NetworkRequests == beforeUnavailable,
+            "No fake network packet when storage handler is unavailable");
+        Subnautica.Events.Handlers.Storage.HasStorageHandler = true;
+
         var hit = new RaycastHit { normal = new Vector3(0,1,0), transform = new Transform() };
         var pos = new Vector3(1.37f, 0f, 2.74f);
         var rot = Quaternion.Euler(new Vector3(0,43f,0));
