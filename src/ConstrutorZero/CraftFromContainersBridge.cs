@@ -275,9 +275,12 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 lastSentItemId = null;
                 return;
             }
+            // Validate the pending ghost/recipe first. Only then dispatch
+            // another locker request; otherwise a cancelled operation can
+            // still move one extra item in the same update frame.
             AutoBuildCoordinator.Tick();
-            RecipePrefetch.Pump(Info);
             AutoCraftCoordinator.Tick();
+            RecipePrefetch.Pump(Info);
             if (!ContainerConfig.ManualPrefetchEnabled)
                 return;
             try
