@@ -98,6 +98,42 @@ namespace Sirro.BZ.MP.ConstrutorZero
         public static float GroundPivotHeight(float surfaceY, float lowestCornerY) =>
             surfaceY - lowestCornerY;
 
+        /// <summary>
+        /// World-anchored wall grid. Tangential horizontal distance and
+        /// absolute Y use a FIXED WORLD origin, not a wall collider's local
+        /// transform. Moving the player towards/away from the same wall must
+        /// not shift the snapped slots as different colliders are hit.
+        /// The wall-normal distance is preserved; this never pushes the
+        /// ghost into or away from the wall.
+        /// </summary>
+        public static float[] WorldWallPosition(float x, float y, float z,
+            float nx, float ny, float nz, float grid)
+        {
+            var result = new[] { x, y, z };
+            if (grid <= 0f || float.IsInfinity(grid) || float.IsNaN(grid))
+                return result;
+            foreach (var value in new[] { x, y, z, nx, ny, nz })
+                if (float.IsNaN(value) || float.IsInfinity(value))
+                    return result;
+            double lengthSquared = nx*nx + nz*nz;
+            if (lengthSquared < .01d) return result;
+            double len = Math.Sqrt(lengthSquared);
+            var tx = -nz / len;
+            var tz = nx / len;
+            var worldAlongWall = x*tx + z*tz;
+            var snappedAlongWall = Math.Round(worldAlongWall / grid,
+                MidpointRounding.AwayFromZero) * grid;
+            var delta = snappedAlongWall - worldAlongWall;
+            var snappedY = Math.Round(y / grid,
+                MidpointRounding.AwayFromZero) * grid;
+            var dy = snappedY - y;
+            // compensate for a slightly inclined wall normal
+            result[0] = (float)(x + tx*delta - nx*ny/lengthSquared*dy);
+            result[1] = (float)snappedY;
+            result[2] = (float)(z + tz*delta - nz*ny/lengthSquared*dy);
+            return result;
+        }
+
         public static float PlaneAxis(float value, float normal, float grid)
         {
             if (grid <= 0 || float.IsInfinity(value) || float.IsNaN(value) ||
@@ -286,21 +322,34 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 var normal = hit.GetType().GetProperty("normal")?.GetValue(hit, null);
                 if (normal == null) return;
 
-                // Snap in the hit object's LOCAL coordinate system.
-                if (target != null)
+                // Wall placement uses a fixed world-space grid: NEVER
+                // rebase to hit.transform or to the camera. Vanilla wall
+                // colliders often live under distinct child transforms, so
+                // local snapping jumped when a moving player aimed at the
+                // same physical wall via a neighboring collider.
+                bool wall = Math.Abs(Reflect.Component(normal, "y")) < .65f;
+                if (!wall && target != null)
                 {
                     position = Reflect.Transform(target, "InverseTransformPoint", vectorType, position);
                     normal = Reflect.Transform(target, "InverseTransformDirection", vectorType, normal);
                 }
                 float grid = (Key("LeftControl", false) || Key("RightControl", false))
                     ? Options.Fine : Options.Grid;
-                var tangent = SnapMath.SurfacePosition(
-                    Reflect.Component(position, "x"),
-                    Reflect.Component(position, "y"),
-                    Reflect.Component(position, "z"),
-                    Reflect.Component(normal, "x"),
-                    Reflect.Component(normal, "y"),
-                    Reflect.Component(normal, "z"), grid);
+                var tangent = wall
+                    ? SnapMath.WorldWallPosition(
+                        Reflect.Component(position, "x"),
+                        Reflect.Component(position, "y"),
+                        Reflect.Component(position, "z"),
+                        Reflect.Component(normal, "x"),
+                        Reflect.Component(normal, "y"),
+                        Reflect.Component(normal, "z"), grid)
+                    : SnapMath.SurfacePosition(
+                        Reflect.Component(position, "x"),
+                        Reflect.Component(position, "y"),
+                        Reflect.Component(position, "z"),
+                        Reflect.Component(normal, "x"),
+                        Reflect.Component(normal, "y"),
+                        Reflect.Component(normal, "z"), grid);
                 Reflect.Set(position, "x", tangent[0]);
                 Reflect.Set(position, "y", tangent[1]);
                 Reflect.Set(position, "z", tangent[2]);
@@ -329,7 +378,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
                             Reflect.Set(position, "y", height);
                     }
                 }
-                if (target != null)
+                if (!wall && target != null)
                     position = Reflect.Transform(target, "TransformPoint", vectorType, position);
                 __args[1] = position;
                 if (Options.RotationEnabled && IsRotationEnabled())
