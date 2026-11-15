@@ -346,6 +346,16 @@ public static class Program
         Assert(Builder.PlacementCalls == 0 &&
             FakeMultiplayerConstruction.PacketsSent == 0,
             "Partial server delivery cannot send construction packet");
+        // Pending placement must stay blocked even if the game mode changes
+        // or the ghost temporarily becomes invalid before the next frame.
+        GameModeManager.CraftingRequiresResources = false;
+        Assert(!Builder.TryPlace() && FakeMultiplayerConstruction.PacketsSent == 0,
+            "Pending building still blocked if Creative mode toggles");
+        GameModeManager.CraftingRequiresResources = true;
+        Builder.CanPlace = false;
+        Assert(!Builder.TryPlace() && FakeMultiplayerConstruction.PacketsSent == 0,
+            "Pending building still blocked if placement becomes invalid");
+        Builder.CanPlace = true;
         Inventory.main.OnAddItem(buildSecond);
         // Race: the second click happens AFTER the last item entered inventory
         // but BEFORE the coordinator's next scheduled replay frame.
@@ -541,6 +551,74 @@ public static class Program
         Assert((bool)fullRecipe.Invoke(null,
                 new object[] { TechType.DuplicateIngredientRecipe }),
             "Duplicate ingredient recipe succeeds only at three actual units");
+        manual.SetValue(null, false);
+
+        // Rejected server requests must not be optimistically acknowledged,
+        // and a timed-out item ID must never be sent twice in one session.
+        locker.container.Clear();
+        autoLocker.container.Clear();
+        Inventory.main.ActualItems.Clear();
+        var deniedLocker = new StorageContainer();
+        deniedLocker.storageRoot.position = new Vector3(2, 0, 0);
+        deniedLocker.storageRoot.gameObject.name = "locker-denied";
+        deniedLocker.storageRoot.gameObject.AddComponent(new Constructable {
+            techType = TechType.Locker, gameObject = deniedLocker.storageRoot.gameObject
+        });
+        deniedLocker.container.Add(new InventoryItem { item = new Pickupable {
+            techType = TechType.Titanium,
+            gameObject = new GameObject { name = "denied-item" } } });
+        deniedLocker.Awake();
+        manual.SetValue(null, true);
+        Assert((bool)beginRecipe.Invoke(null, new object[] { TechType.TestRecipe, log }),
+            "Denied-server scenario prepares a real ingredient queue");
+        int acceptedBeforeDenial = Subnautica.Events.Handlers.Storage.ServerAccepted;
+        int sentBeforeDenial = Subnautica.Events.Handlers.Storage.NetworkRequests;
+        pump.Invoke(null, new object[] { log });
+        Assert(Subnautica.Events.Handlers.Storage.NetworkRequests == sentBeforeDenial + 1 &&
+            Subnautica.Events.Handlers.Storage.ServerAccepted == acceptedBeforeDenial,
+            "A storage event dispatch is not a server acceptance");
+        var sentAt = tracker.GetField("sentAtUtc",
+            BindingFlags.Static | BindingFlags.NonPublic);
+        sentAt.SetValue(null, DateTime.UtcNow.AddSeconds(-30));
+        pump.Invoke(null, new object[] { log });
+        Assert(!(bool)active.GetValue(null),
+            "Server denial times out without replaying the recipe");
+        int packetsAfterTimeout = Subnautica.Events.Handlers.Storage.NetworkRequests;
+        Assert(!(bool)requestOne.Invoke(null, new object[] { TechType.Titanium }) &&
+            Subnautica.Events.Handlers.Storage.NetworkRequests == packetsAfterTimeout,
+            "Timed-out item stays quarantined until ACK or session reset");
+
+        // Real Player.Update must cancel the two coordinators before returning
+        // on disconnect, not just the underlying prefetch queue.
+        manual.SetValue(null, false);
+        autoField.SetValue(null, true);
+        var interruptedMenu = new uGUI_CraftingMenu();
+        interruptedMenu.Action(craftNode);
+        Assert((bool)isWaiting.GetValue(null), "Deferred craft staged before disconnect");
+        Subnautica.API.Features.Network.IsMultiplayerActive = false;
+        Time.frameCount++;
+        Player.main.Update();
+        Assert(!(bool)isWaiting.GetValue(null) && !(bool)active.GetValue(null),
+            "Disconnect cancels deferred crafting coordinator and queue");
+        Subnautica.API.Features.Network.IsMultiplayerActive = true;
+        autoField.SetValue(null, false);
+
+        autoBuildField.SetValue(null, true);
+        Builder.constructableTechType = TechType.TestRecipe;
+        Builder.CanPlace = true;
+        Builder.ghostModel = new GameObject();
+        Assert(!Builder.TryPlace() && (bool)buildWaiting.GetValue(null),
+            "Deferred building staged before disconnect");
+        Subnautica.API.Features.Network.IsMultiplayerActive = false;
+        Time.frameCount++;
+        Player.main.Update();
+        Assert(!(bool)buildWaiting.GetValue(null) && !(bool)active.GetValue(null),
+            "Disconnect cancels deferred building coordinator and queue");
+        Subnautica.API.Features.Network.IsMultiplayerActive = true;
+        autoBuildField.SetValue(null, false);
+        Builder.constructableTechType = TechType.None;
+        Assert((bool)requestOne.Invoke(null, new object[] { TechType.Titanium }),
+            "Session reset releases prior quarantined item IDs");
         manual.SetValue(null, false);
 
         plugin.OnDisabled();
