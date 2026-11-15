@@ -37,7 +37,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
         private static Type inputType, keyCodeType, unityTimeType;
 
         public static int PatchCount => patched;
-        public static bool FullOverrideEnabled => fullOverride && Cfg.AllowUnsafeWorldChanges;
+        public static bool FullOverrideEnabled => IsUnsafePlacementEnabled();
         public static bool AttachToTargetRequested => attachToTarget;
 
         public static void Install()
@@ -153,7 +153,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
 
         // MP safety: even if an opt-in override is enabled, do not pretend dynamic parenting
         // can synchronize. No packet handler is registered for parent changes.
-        public static bool IsUnsafePlacementEnabled() => Cfg.AllowUnsafeWorldChanges && fullOverride;
+        public static bool IsUnsafePlacementEnabled() =>
+            Cfg.AllowUnsafeWorldChanges && fullOverride && !IsMultiplayer();
 
         private static void UpdatePostfix()
         {
