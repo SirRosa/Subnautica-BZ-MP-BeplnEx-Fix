@@ -28,7 +28,7 @@ jobs:
           if ([Math]::Abs($math::PlaneAxis(1.37, 1, 0.5) - 1.37) -gt 0.00001) { throw "Surface normal regression" }
           if ([Math]::Abs($math::PlaneAxis(-1.37, 0, 0.5) + 1.5) -gt 0.00001) { throw "Negative snapping regression" }
           if ([Math]::Abs($math::PlaneAxis(1.37, 0, 0.1) - 1.4) -gt 0.00001) { throw "Fine snapping regression" }
-          $building = [Sirro.BZ.MP.ConstrutorZero.BuildingTweaksBridge]
+          $building = $plugin.GetType().Assembly.GetType("Sirro.BZ.MP.ConstrutorZero.BuildingTweaksBridge", $true)
           $unsafe = $building.GetMethod("IsUnsafePlacementEnabled", [System.Reflection.BindingFlags]"Public, NonPublic, Static")
           if ($unsafe.Invoke($null, $null)) { throw "Unsafe placement must be disabled by default" }
           Write-Host "Build contract, grid math and multiplayer safety gates: PASS"
