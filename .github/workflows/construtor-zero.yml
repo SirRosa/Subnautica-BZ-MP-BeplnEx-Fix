@@ -1,7 +1,7 @@
 name: Construtor Zero stabilization
 on:
   push:
-    branches: [test/construtor-zero-301, test/construtor-zero-cfc-301, test/construtor-zero-stabilization-301, test/construtor-zero-gameplay-fixes-301, test/construtor-zero-placement-ui-301, test/construtor-zero-surface-lock-301]
+    branches: [test/construtor-zero-301, test/construtor-zero-cfc-301, test/construtor-zero-stabilization-301, test/construtor-zero-gameplay-fixes-301, test/construtor-zero-placement-ui-301, test/construtor-zero-surface-lock-301, test/construtor-zero-surface-grid-301]
   workflow_dispatch:
 
 jobs:
