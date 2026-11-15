@@ -61,6 +61,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
         }
         private static int lastTransferFrame = -1;
         private static int lastPruneFrame = -1;
+        private static bool configHintShown;
         private static int installedHooks;
         private static bool enabled;
 
@@ -184,6 +185,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
             lastSentItemId = null;
             lastRequestedTechType = null;
             lastPruneFrame = -1;
+            configHintShown = false;
             installedHooks = 0;
             ActiveHooks.Clear();
         }
@@ -447,6 +449,15 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 uiCacheFrame = -1;
                 lastSentItemId = null;
                 return;
+            }
+            if (!configHintShown && !ContainerConfig.AutoCraftEnabled &&
+                !ContainerConfig.AutoBuildEnabled &&
+                !ContainerConfig.ManualPrefetchEnabled)
+            {
+                configHintShown = true;
+                Info("CFC is installed but all transfers are OFF in " +
+                    "ConstrutorZero.Containers.ini. Set auto_craft_enabled=true " +
+                    "and restart the game.");
             }
             // Validate the pending ghost/recipe first. Only then dispatch
             // another locker request; otherwise a cancelled operation can
