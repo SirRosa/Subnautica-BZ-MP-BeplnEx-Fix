@@ -467,10 +467,10 @@ public static class Program
         autoLocker.container.Remove(buildSecond);
         Time.frameCount++;
         int noStockPackets = Subnautica.Events.Handlers.Storage.NetworkRequests;
-        Assert((bool)preflightPrefix.Invoke(null, new object[] { false }) &&
+        Assert(!(bool)preflightPrefix.Invoke(null, new object[] { false }) &&
             !(bool)active.GetValue(null) &&
             Subnautica.Events.Handlers.Storage.NetworkRequests == noStockPackets,
-            "Auto-build does not start a partial transfer when the locker lacks full recipe");
+            "Auto-build blocks network placement and partial transfers when source stock is insufficient");
         autoLocker.container.Add(buildSecond);
         Time.frameCount++;
         Assert(!Builder.TryPlace(), "Initial building action deferred before any resource consumption");
