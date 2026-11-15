@@ -68,6 +68,17 @@ public class Ingredient
     public int amount { get; }
     public Ingredient(TechType techType, int amount) { this.techType = techType; this.amount = amount; }
 }
+public enum GameOption { CraftingRequiresResources }
+public static class GameModeManager
+{
+    public static bool CraftingRequiresResources = true;
+    public static T GetOption<T>(GameOption option)
+    {
+        if (option != GameOption.CraftingRequiresResources)
+            throw new ArgumentException("Unsupported fake GameOption");
+        return (T)(object)CraftingRequiresResources;
+    }
+}
 public static class CrafterLogic
 {
     public static bool IsUnlocked = true;
