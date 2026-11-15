@@ -815,6 +815,36 @@ public static class Program
             "Session reset releases prior quarantined item IDs");
         manual.SetValue(null, false);
 
+        // Regression: the real Unity engine/reflection layer can throw from
+        // a property getter during Player.Update. The Harmony postfix must
+        // not propagate that exception, replay a deferred action or continue
+        // requesting ingredients in subsequent frames.
+        manual.SetValue(null, true);
+        Assert((bool)beginRecipe.Invoke(null, new object[] { TechType.TestRecipe, log }),
+            "Runtime failure scenario starts with an active recipe queue");
+        Time.ThrowOnFrameRead = true;
+        try
+        {
+            Player.main.Update(); // must not throw into Unity/Harmony
+        }
+        finally { Time.ThrowOnFrameRead = false; }
+        Assert(!(bool)cfcReady.GetValue(null) && !(bool)active.GetValue(null),
+            "Unhandled Unity getter error disables CFC and clears its queue");
+        Assert(!(bool)isWaiting.GetValue(null) && !(bool)buildWaiting.GetValue(null),
+            "Fail-closed runtime error clears both deferred action coordinators");
+        int requestCountAfterFailure = Subnautica.Events.Handlers.Storage.NetworkRequests;
+        Time.frameCount++;
+        Player.main.Update();
+        Assert(Subnautica.Events.Handlers.Storage.NetworkRequests == requestCountAfterFailure &&
+            !(bool)requestOne.Invoke(null, new object[] { TechType.Titanium }),
+            "Disabled CFC does not emit any additional storage requests");
+        autoBuildField.SetValue(null, true);
+        Assert((bool)buildPrefix.Invoke(null, new object[] { false }) &&
+            !(bool)buildWaiting.GetValue(null),
+            "Disabled CFC cannot suppress normal multiplayer building");
+        autoBuildField.SetValue(null, false);
+        manual.SetValue(null, false);
+
         plugin.OnDisabled();
         Assert(!Inventory.main.quickSlots.HotkeysIgnored,
             "Plugin unload restores quick-slot hotkeys");
