@@ -725,6 +725,8 @@ public static class Program
         int startingFloorCasts = Physics.FloorRaycasts;
         Assert(Builder.UpdateAllowed(),
             "Floor-only Locker finds legal mounting floor while camera aims ABOVE it");
+        Assert(ReferenceEquals(Builder.LastSubmoduleCollider, Physics.WorldFloor),
+            "Real floor collider propagates through CheckAsSubModule OUT argument");
         Assert(Physics.FloorRaycasts > startingFloorCasts,
             "Ground position is physically raycast, never guessed from camera pitch");
         Eq(Builder.placePosition.y,1.25f,
@@ -781,6 +783,8 @@ public static class Program
         MainCamera.camera.transform.forward = new Vector3(0f,.8f,.6f);
         Assert(Builder.UpdateAllowed(),
             "Wall-only SmallLocker finds wall regardless of camera pitch");
+        Assert(ReferenceEquals(Builder.LastSubmoduleCollider, Physics.WorldWall),
+            "Real wall collider propagates through CheckAsSubModule OUT argument");
         Eq(Builder.placePosition.y,2.5f,
             "Wall-only furniture attaches at wall hit height");
         Physics.WallAvailable = false;
