@@ -62,11 +62,13 @@ namespace Sirro.BZ.MP.ConstrutorZero
             finally
             {
                 BuildingTweaksBridge.Install();
+                CraftFromContainersBridge.Install();
             }
         }
 
         public override void OnDisabled()
         {
+            CraftFromContainersBridge.Uninstall();
             BuildingTweaksBridge.Uninstall();
             try
             {
