@@ -10,7 +10,7 @@ namespace UnityEngine
     public enum KeyCode
     {
         Mouse2, Mouse3, Mouse4, LeftControl, RightControl, LeftAlt, RightAlt,
-        G, T, B, KeypadDivide, Keypad4, Keypad6, Keypad2, Keypad8, KeypadMinus, KeypadPlus
+        G, T, B, F6, KeypadDivide, Keypad4, Keypad6, Keypad2, Keypad8, KeypadMinus, KeypadPlus
     }
     public static class Time
     {
@@ -58,6 +58,41 @@ namespace UnityEngine
         public object GetComponent(Type type) => components.TryGetValue(type, out var c) ? c : null;
         public object GetComponentInParent(Type type) => GetComponent(type);
     }
+}
+public enum TechType { None, Titanium, Locker, SmallLocker }
+public sealed class Pickupable
+{
+    public TechType techType = TechType.Titanium;
+    public UnityEngine.GameObject gameObject = new UnityEngine.GameObject();
+    public TechType GetTechType() => techType;
+}
+public sealed class InventoryItem
+{
+    public Pickupable item = new Pickupable();
+}
+public class StorageContainer
+{
+    public UnityEngine.Transform storageRoot = new UnityEngine.Transform();
+    public List<InventoryItem> container = new List<InventoryItem>();
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public void Awake() { }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public void OnDestroy() { }
+}
+public class Inventory
+{
+    public static Inventory main = new Inventory();
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public int GetPickupCount(TechType type) => 0;
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public bool DestroyItem(TechType destroyTechType) => false;
+}
+public class Player
+{
+    public static Player main = new Player();
+    public UnityEngine.Transform transform = new UnityEngine.Transform();
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public void Update() { }
 }
 public class ConstructableBase
 {
