@@ -339,10 +339,19 @@ namespace Sirro.BZ.MP.ConstrutorZero
             if (IsUnsafePlacementEnabled()) __result = true;
         }
 
-        private static void GetObstaclesPostfix(object __result)
+        private static void GetObstaclesPostfix(object[] __args)
         {
-            if (!IsUnsafePlacementEnabled()) return;
-            try { (__result as IList)?.Clear(); }
+            // Original BZ Builder.GetObstacles has a by-ref "results" parameter,
+            // not a return value. Using __result prevents Harmony from installing
+            // the patch on a void-returning method.
+            if (!IsUnsafePlacementEnabled() || __args == null) return;
+            try
+            {
+                foreach (var value in __args)
+                    if (value is IList list && value.GetType().IsGenericType &&
+                        value.GetType().GetGenericArguments()[0].Name == "GameObject")
+                        list.Clear();
+            }
             catch (Exception e) { LogOnce("OBSTACLES", e); }
         }
 
