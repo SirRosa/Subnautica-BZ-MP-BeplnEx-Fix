@@ -97,17 +97,21 @@ public class ItemsContainer : IEnumerable<InventoryItem>
 {
     private readonly List<InventoryItem> contents = new List<InventoryItem>();
     public int GetItemsCalls;
+    public int Enumerations;
     // Real game has both IEnumerable<InventoryItem> and the two-argument
     // filtered GetItems API. Do not fake away a real supported interface.
-    public IEnumerator<InventoryItem> GetEnumerator() => contents.GetEnumerator();
+    public IEnumerator<InventoryItem> GetEnumerator()
+    {
+        Enumerations++;
+        return contents.GetEnumerator();
+    }
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     public UnityEngine.Transform tr = new UnityEngine.Transform();
     public int Count => contents.Count;
     public void Add(InventoryItem item) => contents.Add(item);
     public bool Remove(InventoryItem item) => contents.Remove(item);
     public void Clear() => contents.Clear();
-    // Real BZ ItemsContainer is not an enumerable InventoryItem list.
-    // Its supported API is GetItems(TechType, List<InventoryItem>).
+    // GetItems(TechType, List<InventoryItem>) is also supported.
     public void GetItems(TechType type, List<InventoryItem> result)
     {
         GetItemsCalls++;
@@ -196,11 +200,78 @@ public class uGUI_CraftingMenu
     [MethodImpl(MethodImplOptions.NoInlining)]
     public void OnDeselect() { Closed = true; }
 }
+public class FakeColorText { public string color = "red"; }
+public class FakeRecipeManager
+{
+    public string colorGreen = "green";
+    public string colorRed = "red";
+}
+public class uGUI_RecipeItem
+{
+    public FakeColorText text = new FakeColorText();
+    public int DisplayCount;
+    public int DisplayRequired;
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public void Set(TechType type, int count, int amount, bool ping)
+    {
+        DisplayCount = count;
+        DisplayRequired = amount;
+    }
+}
 public class uGUI_RecipeEntry
 {
     public TechType techType { get; set; }
+    public FakeRecipeManager manager = new FakeRecipeManager();
+    public List<uGUI_RecipeItem> items = new List<uGUI_RecipeItem>();
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public void UpdateIngredients(ItemsContainer inventory, bool ping) { }
+    public void UpdateIngredients(ItemsContainer inventory, bool ping)
+    {
+        items.Clear();
+        foreach (var ingredient in TechData.GetIngredients(techType))
+        {
+            var displayed = new uGUI_RecipeItem();
+            displayed.DisplayRequired = ingredient.amount;
+            displayed.DisplayCount = Inventory.main.GetPickupCount(ingredient.techType);
+            displayed.text.color = displayed.DisplayCount >= displayed.DisplayRequired ?
+                "green" : "red";
+            items.Add(displayed);
+        }
+    }
+}
+public class TooltipIcon
+{
+    public object sprite;
+    public string text;
+    public TooltipIcon(object sprite, string text) { this.sprite = sprite; this.text = text; }
+}
+public class TooltipData
+{
+    public List<TooltipIcon> icons = new List<TooltipIcon>();
+}
+public static class SpriteManager
+{
+    public static object Get(TechType type) => type.ToString() + "-sprite";
+}
+public class Language
+{
+    public static Language main = new Language();
+    public string Get(string key) => key;
+}
+public static class TooltipFactory
+{
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void CraftRecipe(TechType type, bool locked, TooltipData data)
+    {
+        foreach (var ingredient in TechData.GetIngredients(type))
+            data.icons.Add(new TooltipIcon(SpriteManager.Get(ingredient.techType),
+                "<color=#FF7777FF>" + ingredient.techType + "</color>"));
+    }
+}
+public static class ErrorMessage
+{
+    public static int HudMessages;
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void AddMessage(string message) { HudMessages++; }
 }
 public sealed class Pickupable
 {
