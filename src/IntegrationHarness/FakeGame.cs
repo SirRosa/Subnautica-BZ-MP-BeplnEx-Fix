@@ -479,6 +479,7 @@ public static class Builder
     public static UnityEngine.LayerMask placeLayerMask = new UnityEngine.LayerMask();
     public static UnityEngine.GameObject placementTarget;
     public static bool SimulateSurfaceValidation;
+    public static UnityEngine.Collider LastSubmoduleCollider;
     public static UnityEngine.Vector3 placePosition;
     public static UnityEngine.Quaternion placeRotation;
     public static bool allowedOnConstructables = false, allowedInBase = false,
@@ -497,10 +498,21 @@ public static class Builder
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static bool CreateGhost() => true;
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static bool UpdateAllowed() =>
-        SimulateSurfaceValidation && CheckAsSubModule();
+    public static bool UpdateAllowed()
+    {
+        if (!SimulateSurfaceValidation) return false;
+        var result = CheckAsSubModule(out UnityEngine.Collider collider);
+        LastSubmoduleCollider = collider;
+        return result;
+    }
+    // Current Below Zero returns the accepted surface collider by OUT
+    // parameter. Unlike the old Subnautica no-argument method.
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static bool CheckAsSubModule() => false;
+    private static bool CheckAsSubModule(out UnityEngine.Collider hitCollider)
+    {
+        hitCollider = null;
+        return false;
+    }
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool CheckTag(UnityEngine.Collider collider) =>
         collider != null;
