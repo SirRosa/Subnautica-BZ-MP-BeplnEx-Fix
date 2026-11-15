@@ -96,6 +96,7 @@ namespace UnityEngine
         public static bool GroundAvailable = true;
         public static bool WallAvailable;
         public static bool FurnitureAvailable;
+        public static bool FloorFurnitureAvailable;
         public static float FloorHeight = 1.25f;
         public static int WallAllRaycasts;
         public static float WallHitTransformOffset;
@@ -106,13 +107,36 @@ namespace UnityEngine
         public static readonly Collider WorldFurniture = new Collider {
             gameObject = new GameObject { name = "world-locker-in-front" }
         };
+        public static readonly Collider WorldFloorFurniture = new Collider {
+            gameObject = new GameObject { name = "locker-on-ground" }
+        };
         public static int FloorRaycasts;
         public static int WallRaycasts;
         public static RaycastHit[] RaycastAll(Vector3 origin, Vector3 direction,
             float maxDistance, int mask, QueryTriggerInteraction query)
         {
-            WallAllRaycasts++;
             var hits = new List<RaycastHit>();
+            if (direction.y < -.75f)
+            {
+                FloorRaycasts++;
+                if (FloorFurnitureAvailable &&
+                    origin.y >= FloorHeight + .7f &&
+                    origin.y - FloorHeight - .7f <= maxDistance)
+                    hits.Add(new RaycastHit {
+                        point = new Vector3(origin.x,FloorHeight + .7f,origin.z),
+                        normal = new Vector3(0,1,0),
+                        collider = WorldFloorFurniture
+                    });
+                if (GroundAvailable && origin.y >= FloorHeight &&
+                    origin.y - FloorHeight <= maxDistance)
+                    hits.Add(new RaycastHit {
+                        point = new Vector3(origin.x,FloorHeight,origin.z),
+                        normal = new Vector3(0,1,0),
+                        collider = WorldFloor
+                    });
+                return hits.ToArray();
+            }
+            WallAllRaycasts++;
             if (FurnitureAvailable && direction.z > 0.01f)
             {
                 hits.Add(new RaycastHit {
