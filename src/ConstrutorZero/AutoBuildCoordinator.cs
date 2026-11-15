@@ -48,14 +48,16 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 var validPlacement = CraftFromContainersBridge.Read(builder, "canPlace");
                 if (!(validPlacement is bool) || !(bool)validPlacement)
                     return true;
-                if (RecipePrefetch.InventoryHasCompleteRecipe(techType)) return true;
-
-                // Never compete with a manual or crafting transaction.
+                // A pending construction owns this click, even if another inventory
+                // event has already made the recipe temporarily affordable. Check
+                // the transaction BEFORE the fast path or a second click could
+                // emit an extra BOT Benson construction packet.
                 if (waiting || RecipePrefetch.IsActive || AutoCraftCoordinator.IsWaiting)
                 {
                     __result = false;
                     return false;
                 }
+                if (RecipePrefetch.InventoryHasCompleteRecipe(techType)) return true;
 
                 var prefab = CraftFromContainersBridge.Read(builder, "prefab");
                 if (prefab == null || IsBasePiece(prefab))
