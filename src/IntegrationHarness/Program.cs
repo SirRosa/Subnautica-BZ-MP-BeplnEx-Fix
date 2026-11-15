@@ -454,7 +454,28 @@ public static class Program
         Assert((new PowerConsumer{powerRelay = new FakePowerRelay()}).IsPowered(),
             "Detached power relay fallback");
 
+        var placeTool = new PlaceTool();
+        placeTool.LateUpdate();
+        Assert(Inventory.main.quickSlots.HotkeysIgnored,
+            "PlaceTool reserves quick-slot hotkeys while snapping rotation is active");
+        placeTool.rotationEnabled = false;
+        placeTool.LateUpdate();
+        Assert(!Inventory.main.quickSlots.HotkeysIgnored,
+            "PlaceTool without rotation leaves normal quick-slot hotkeys enabled");
+        placeTool.rotationEnabled = true;
+        placeTool.LateUpdate();
+        placeTool.OnHolster();
+        Assert(!Inventory.main.quickSlots.HotkeysIgnored,
+            "Holstering PlaceTool always restores quick-slot hotkeys");
+        placeTool.LateUpdate();
+        placeTool.OnPlace();
+        Assert(!Inventory.main.quickSlots.HotkeysIgnored,
+            "Placing a held item restores quick-slot hotkeys");
+        placeTool.LateUpdate();
+
         plugin.OnDisabled();
+        Assert(!Inventory.main.quickSlots.HotkeysIgnored,
+            "Plugin unload restores quick-slot hotkeys");
         Assert((int)storages.GetValue(null) == 0, "Storage registry cleaned on plugin shutdown");
         foreach (var method in Harmony.GetAllPatchedMethods().Where(m => m.DeclaringType == typeof(Builder)))
         {
