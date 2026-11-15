@@ -92,6 +92,20 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 // camera-pitch position if a helper fails to update it.
                 var args = new object[] { hit, Read(hit, "point"), rotation };
                 setSurface.Invoke(null, args); // existing SnapHook rounds tangent axes
+                // Vanilla Quaternion.LookRotation can tilt floor furniture
+                // vertically (single beds, lockers) near steep camera angles,
+                // and wall furniture on imperfect collider normals. Never
+                // reuse a pitched/tumbled prior frame rotation. Construct a
+                // fresh UP-RIGHT pose from stable world yaw/wall normal.
+                var uprightRotation = UprightRotation(builder, surface, hit,
+                    args[2]);
+                if (uprightRotation == null)
+                {
+                    KeepLastSurfaceGhost(builder, prefab);
+                    __result = false;
+                    return;
+                }
+                args[2] = uprightRotation;
                 var collider = Read(hit, "collider");
                 var hitObject = Read(collider, "gameObject");
                 if (hitObject == null) return;
@@ -151,7 +165,15 @@ namespace Sirro.BZ.MP.ConstrutorZero
             // floor; SmallLocker is a wall locker. Do not infer attachment
             // from what surface an unrelated camera ray happened to hit.
             if (techName == "Locker") return Anchor.Floor;
-            if (techName == "SmallLocker") return Anchor.Wall;
+            if (techName == "SmallLocker" || techName == "PlanterShelf" ||
+                techName == "PictureFrame" || techName == "SingleWallShelf")
+                return Anchor.Wall;
+            // All BZ craftable single beds are FLOOR furniture even if a
+            // modded prefab accidentally advertises other allowed surfaces.
+            if (!string.IsNullOrEmpty(techName) &&
+                (techName.StartsWith("Bed", StringComparison.OrdinalIgnoreCase) ||
+                 techName == "NarrowBed"))
+                return Anchor.Floor;
 
             var surfaces = Read(instance, "allowedSurfaceTypes") as IEnumerable;
             if (surfaces == null) return Anchor.None;
@@ -178,6 +200,44 @@ namespace Sirro.BZ.MP.ConstrutorZero
             var get = prefab.GetType().GetMethod("GetComponent", All,
                 null, new[] { typeof(Type) }, null);
             return get == null || get.Invoke(prefab, new[] { (object)type }) != null;
+        }
+
+        private static object UprightRotation(Type builder, Anchor surface,
+            object hit, object original)
+        {
+            if (original == null) return null;
+            var quat = original.GetType();
+            var normal = Read(hit, "normal");
+            float fx, fz;
+            if (surface == Anchor.Floor)
+            {
+                // Exactly horizontal vector, even if the camera looks
+                // straight down. TrySurfaceRay preserves the last yaw when
+                // forward X/Z become numerically degenerate.
+                fx = -rememberedYawX;
+                fz = -rememberedYawZ;
+            }
+            else
+            {
+                fx = normal == null ? 0f : Float(normal, "x");
+                fz = normal == null ? 0f : Float(normal, "z");
+            }
+            if (fx*fx + fz*fz < 0.001f) return null;
+            var yaw = (float)(Math.Atan2(fx, fz) * 180.0 / Math.PI);
+            var enabled = Read(builder, "rotationEnabled");
+            if (enabled is bool && (bool)enabled)
+                yaw += GetFloat(builder, "additiveRotation", 0f);
+            if (Options.Enabled && Options.RotationEnabled &&
+                enabled is bool && (bool)enabled && surface == Anchor.Floor)
+                yaw = SnapMath.RotationAngle(yaw,
+                    SnapHook.IsFineRotationHeld() ? Options.FineRotationStep :
+                        Options.RotationStep);
+
+            var euler = NewVector(Reflect.Type("UnityEngine.Vector3"), 0f, yaw, 0f);
+            var makeEuler = quat.GetMethod("Euler",
+                BindingFlags.Public | BindingFlags.Static, null,
+                new[] { euler.GetType() }, null);
+            return makeEuler?.Invoke(null, new[] { euler });
         }
 
         private static bool TrySurfaceRay(Type builder, Anchor surface, out object hit)
@@ -212,10 +272,18 @@ namespace Sirro.BZ.MP.ConstrutorZero
             // a wall/object blocks the original target.
             if (surface == Anchor.Wall)
             {
-                // One stable horizontal direction, independent of the
-                // camera's forward/back position or vertical pitch.
+                // A horizontal ray from CAMERA EYE LEVEL had frozen every
+                // wall planter at one fixed world height. Use the vertical
+                // camera aim to raise/lower the ORIGIN of a horizontal wall
+                // ray, while keeping the ray's horizontal direction stable.
+                // Scaling by fixed preferred distance makes moving toward
+                // or away from the wall not slide the world-grid vertically.
                 var dir = NewVector(origin.GetType(), rememberedYawX, 0f, rememberedYawZ);
-                return FindWallSurface(builder, origin, dir, maxDistance, out hit);
+                var pitch = Float(forward, "y");
+                var liftLimit = Math.Min(1.5f, preferred);
+                var lift = Math.Max(-liftLimit, Math.Min(liftLimit, pitch * preferred));
+                var wallStart = NewVector(origin.GetType(), camX, camY + lift, camZ);
+                return FindWallSurface(builder, wallStart, dir, maxDistance, out hit);
             }
 
             var candidates = new[] { preferred, preferred - .45f,
