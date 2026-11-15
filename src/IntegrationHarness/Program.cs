@@ -779,6 +779,34 @@ public static class Program
         Assert(Builder.UpdateAllowed(),
             "Legitimate floor becomes available again after validation restores");
 
+        // Simulate impossible native pitched/rolled look-rotation on a
+        // downward camera ray. Floor beds and ordinary lockers must always
+        // become UPRIGHT; never lean 82 degrees or stand vertically.
+        Builder.SimulateTiltedSurfaceRotation = true;
+        Builder.additiveRotation = 0f;
+        foreach (var bed in new[] { TechType.Locker, TechType.Bed1,
+            TechType.Bed2, TechType.NarrowBed })
+        {
+            constructable.techType = bed;
+            constructable.allowedSurfaceTypes = new List<SurfaceType> {
+                SurfaceType.Ground, SurfaceType.Wall
+            };
+            Builder.constructableTechType = bed;
+            Builder.placeRotation = new Quaternion(82f,32f,76f,1f);
+            MainCamera.camera.transform.forward = new Vector3(0f,-.98f,.2f);
+            Assert(Builder.UpdateAllowed(),
+                "Floor-only bed/locker finds real floor even if model allows wall " + bed);
+            Eq(Builder.placeRotation.eulerAngles.x, 0f,
+                "Bed/Locker cannot tilt forward or back on floor " + bed);
+            Eq(Builder.placeRotation.eulerAngles.z, 0f,
+                "Bed/Locker cannot roll sideways on floor " + bed);
+        }
+        Builder.SimulateTiltedSurfaceRotation = false;
+        constructable.techType = TechType.Locker;
+        constructable.allowedSurfaceTypes = new List<SurfaceType> { SurfaceType.Ground };
+        Builder.constructableTechType = TechType.Locker;
+        MainCamera.camera.transform.forward = new Vector3(0f,-.86f,.51f);
+
         // A floor-only Locker must use the actual structural floor even
         // when a nearby existing locker top is the FIRST/closest horizontal
         // surface along the downward ray. Never attach the floor locker to
@@ -816,8 +844,36 @@ public static class Program
             "Wall-only SmallLocker finds wall regardless of camera pitch");
         Assert(ReferenceEquals(Builder.LastSubmoduleCollider, Physics.WorldWall),
             "Real wall collider propagates through CheckAsSubModule OUT argument");
+        Eq(Builder.placePosition.y,4f,
+            "Wall furniture can be raised 1.5m above eye height by looking up");
+        MainCamera.camera.transform.forward = new Vector3(0f,-.6f,.8f);
+        Assert(Builder.UpdateAllowed(),
+            "Looking down moves the wall furniture DOWN, not at fixed camera height");
+        Eq(Builder.placePosition.y,1.5f,
+            "Wall furniture vertical world grid can move downward");
+        MainCamera.camera.transform.forward = new Vector3(0f,0f,1f);
+        Assert(Builder.UpdateAllowed(),
+            "Looking horizontally moves the wall furniture to eye height");
         Eq(Builder.placePosition.y,2.5f,
-            "Wall-only furniture attaches at wall hit height");
+            "Wall furniture at neutral pitch snaps to 2.5m world grid");
+
+        // The actual BZ wall-mounted planter TechType must use the same
+        // independent wall-height model, not a frozen SmallLocker-only path.
+        constructable.techType = TechType.PlanterShelf;
+        Builder.constructableTechType = TechType.PlanterShelf;
+        MainCamera.camera.transform.forward = new Vector3(0f,.7f,.714f);
+        Assert(Builder.UpdateAllowed(),
+            "PlanterShelf finds a wall using vertical camera aim");
+        Assert(Builder.placePosition.y > 2.5f,
+            "Wall planter rises as the player looks upward");
+        MainCamera.camera.transform.forward = new Vector3(0f,-.7f,.714f);
+        Assert(Builder.UpdateAllowed(),
+            "PlanterShelf finds wall while looking down");
+        Assert(Builder.placePosition.y < 2.5f,
+            "Wall planter descends as the player looks downward");
+        constructable.techType = TechType.SmallLocker;
+        Builder.constructableTechType = TechType.SmallLocker;
+        MainCamera.camera.transform.forward = new Vector3(0f,.8f,.6f);
 
         // A nearby floor Locker now sits IN FRONT of the actual base wall.
         // The wall-only item must prefer the physical wall regardless of
