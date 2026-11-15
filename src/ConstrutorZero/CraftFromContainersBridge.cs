@@ -1,0 +1,388 @@
+using System;
+using System.IO;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using System.Globalization;
+
+namespace Sirro.BZ.MP.ConstrutorZero
+{
+    /// <summary>
+    /// Network-safe foundation for Craft from Containers BZ.
+    ///
+    /// IMPORTANT: The original mod calls ItemsContainer.DestroyItem and reports a
+    /// successful Inventory.DestroyItem synchronously. That is unsafe with BOT Benson's
+    /// authoritative, asynchronous server storage/inventory protocol.
+    ///
+    /// This bridge never directly destroys shared locker contents. The only permitted
+    /// mutation is a server-validated storage->inventory transfer via the SAME event
+    /// used by the multiplayer's ordinary locker drag-and-drop UI.
+    ///
+    /// No fabricated success is returned to the crafting system.
+    /// </summary>
+    internal static class CraftFromContainersBridge
+    {
+        private const BindingFlags All = BindingFlags.Public | BindingFlags.NonPublic |
+            BindingFlags.Static | BindingFlags.Instance;
+        private static readonly Dictionary<object, object> Storage = new Dictionary<object, object>();
+        private static readonly HashSet<string> Warned = new HashSet<string>();
+        private static object harmony;
+        private static MethodInfo unpatch;
+        private static MethodInfo patch;
+        private static Type harmonyMethod;
+        private static object lastRequestedTechType;
+        private static int lastTransferFrame = -1;
+        private static int installedHooks;
+        private static int lastRequestedItem = 0;
+        private static bool enabled;
+
+        internal static int RegisteredStorages => Storage.Count;
+        internal static int HookCount => installedHooks;
+
+        internal static void Install()
+        {
+            try
+            {
+                ContainerConfig.Load();
+                var harmonyType = Reflect.Type("HarmonyLib.Harmony");
+                harmonyMethod = Reflect.Type("HarmonyLib.HarmonyMethod");
+                if (harmonyType == null || harmonyMethod == null)
+                    throw new MissingMemberException("Harmony is not available");
+                harmony = Activator.CreateInstance(harmonyType, "sirro.bz.mp.construtor-zero.containers");
+                unpatch = harmonyType.GetMethod("UnpatchAll", All, null, new[] { typeof(string) }, null);
+                patch = harmonyType.GetMethods(All).FirstOrDefault(m => m.Name == "Patch" &&
+                    m.GetParameters().Length >= 3 && m.GetParameters()[0].ParameterType == typeof(MethodBase));
+                if (patch == null) throw new MissingMethodException("Harmony.Patch");
+
+                Hook("StorageContainer", "Awake", null, nameof(StorageAwake));
+                Hook("StorageContainer", "OnDestroy", null, nameof(StorageDestroyed));
+                Hook("SeamothStorageContainer", "Awake", null, nameof(StorageAwake));
+                // Observes TechType queried by vanilla inventory. Does NOT inflate
+                // crafting counts until secure synchronous consumption is possible.
+                Hook("Inventory", "GetPickupCount", null, nameof(InventoryCountObserved));
+                Hook("Inventory", "DestroyItem", null, nameof(InventoryDestroyObserved));
+                Hook("Player", "Update", null, nameof(PlayerUpdate));
+                enabled = true;
+                Trace.Info("CFC_READY: hooks=" + installedHooks +
+                    ", range=" + ContainerConfig.RangeMeters + "m, server_transfer_only=true");
+                Trace.Info("CFC_LIMITATION: automatic craft/build consumption is not enabled; " +
+                    "multiplayer storage transfers need server acknowledgement");
+            }
+            catch (Exception e) { Trace.Info("CFC_INIT_FAILED: " + e); }
+        }
+
+        private static void Hook(string className, string name, string prefix, string postfix)
+        {
+            var type = Reflect.Type(className);
+            if (type == null) return; // SeamothStorageContainer absent in BZ is expected
+            foreach (var method in type.GetMethods(All).Where(m => m.Name == name))
+            {
+                try
+                {
+                    var args = new object[patch.GetParameters().Length];
+                    args[0] = method;
+                    if (prefix != null)
+                        args[1] = Activator.CreateInstance(harmonyMethod, typeof(CraftFromContainersBridge)
+                            .GetMethod(prefix, All));
+                    if (postfix != null)
+                        args[2] = Activator.CreateInstance(harmonyMethod, typeof(CraftFromContainersBridge)
+                            .GetMethod(postfix, All));
+                    patch.Invoke(harmony, args);
+                    installedHooks++;
+                }
+                catch (Exception e)
+                {
+                    Once("CFC_HOOK_FAIL " + className + "." + name + ": " +
+                        (e.InnerException ?? e).Message);
+                }
+            }
+        }
+
+        internal static void Uninstall()
+        {
+            try
+            {
+                enabled = false;
+                if (unpatch != null)
+                    unpatch.Invoke(harmony, new object[] { "sirro.bz.mp.construtor-zero.containers" });
+            }
+            catch (Exception e) { Trace.Info("CFC_UNPATCH_FAILED: " + e.Message); }
+            Storage.Clear();
+            lastRequestedTechType = null;
+            installedHooks = 0;
+        }
+
+        private static void StorageAwake(object __instance)
+        {
+            if (__instance == null) return;
+            try
+            {
+                var root = Get(__instance, "storageRoot") ?? Get(__instance, "transform");
+                var contents = Get(__instance, "container");
+                if (root != null && contents != null) Storage[root] = contents;
+            }
+            catch (Exception e) { Once("CFC_REGISTER: " + e.Message); }
+        }
+
+        private static void StorageDestroyed(object __instance)
+        {
+            if (__instance == null) return;
+            try { Storage.Remove(Get(__instance, "storageRoot") ?? Get(__instance, "transform")); }
+            catch { }
+        }
+
+        private static void InventoryCountObserved(object __instance, object[] __args)
+        {
+            if (!enabled || !ContainerConfig.Enabled || __args == null || __args.Length == 0)
+                return;
+            if (__args[0] != null) lastRequestedTechType = __args[0];
+        }
+
+        private static void InventoryDestroyObserved(object __instance, object[] __args, bool __result)
+        {
+            // Never mark false->true here: that would yield free crafting in multiplayer.
+            if (!enabled || !ContainerConfig.Enabled || __result) return;
+            if (__args == null || __args.Length == 0 || __args[0] == null) return;
+            lastRequestedTechType = __args[0];
+        }
+
+        private static void PlayerUpdate()
+        {
+            if (!enabled || !ContainerConfig.Enabled || !ContainerConfig.ManualPrefetchEnabled)
+                return;
+            try
+            {
+                var input = Reflect.Type("UnityEngine.Input");
+                var keyCode = Reflect.Type("UnityEngine.KeyCode");
+                var time = Reflect.Type("UnityEngine.Time");
+                var frame = Convert.ToInt32(Get(time, "frameCount") ?? 0);
+                if (frame == lastTransferFrame) return;
+                var down = input?.GetMethod("GetKeyDown", All, null, new[] { keyCode }, null);
+                if (keyCode == null || down == null) return;
+                var hotkey = Enum.Parse(keyCode, ContainerConfig.TransferKey);
+                if (!(bool)down.Invoke(null, new[] { hotkey })) return;
+                lastTransferFrame = frame;
+                if (lastRequestedTechType == null)
+                {
+                    Info("No ingredient selected; open a crafting/building recipe first");
+                    return;
+                }
+                if (!TryRequestOne(lastRequestedTechType))
+                    Info("No eligible nearby locker item or multiplayer transfer API unavailable");
+            }
+            catch (Exception e) { Once("CFC_HOTKEY: " + e.Message); }
+        }
+
+        /// <summary>
+        /// Request a server-authoritative SINGLE item transfer. The server validates
+        /// the item's unique ID, removes it from locker, and sends a normal
+        /// inventory addition packet. The client MUST NOT mutate local storage here.
+        /// </summary>
+        internal static bool TryRequestOne(object wantedTechType)
+        {
+            if (!enabled || wantedTechType == null || !ContainerConfig.Enabled)
+                return false;
+            // Server validation is mandatory even for the host. Never bypass it.
+            if (!IsNetworkActive()) return false;
+            try
+            {
+                var player = Reflect.Type("Player");
+                var local = Get(player, "main");
+                var pos = Get(Get(local, "transform"), "position");
+                if (pos == null) return false;
+                var network = typeof(Subnautica.API.Features.SubnauticaPlugin).Assembly
+                    .GetType("Subnautica.API.Features.Network");
+                var identifier = Get(network, "Identifier");
+                var argsType = Reflect.Type("Subnautica.Events.EventArgs.StorageItemRemovingEventArgs");
+                var handlerType = Reflect.Type("Subnautica.Events.Handlers.Storage");
+                var dispatch = handlerType?.GetMethod("OnItemRemoving", All);
+                if (argsType == null || identifier == null || dispatch == null)
+                {
+                    Once("CFC_NETWORK_UNAVAILABLE: no Storage.ItemRemoving event");
+                    return false;
+                }
+
+                foreach (var kv in Storage.ToArray())
+                {
+                    var origin = kv.Key;
+                    var container = kv.Value;
+                    if (origin == null || container == null ||
+                        Distance(pos, Get(origin, "position")) > ContainerConfig.RangeMeters)
+                        continue;
+                    var root = Get(origin, "gameObject");
+                    if (root == null) continue;
+                    var constructable = Component(root, "Constructable", true);
+                    if (constructable == null) continue;
+                    var lockerType = Get(constructable, "techType");
+                    var name = lockerType?.ToString() ?? "";
+                    if (name != "Locker" && name != "SmallLocker") continue;
+                    if (!ContainerConfig.IsAllowed(name)) continue;
+
+                    foreach (var item in container as IEnumerable ?? new object[0])
+                    {
+                        var pickup = Get(item, "item");
+                        if (pickup == null || !Equals(GetTechType(pickup), wantedTechType)) continue;
+                        var gameObject = Get(pickup, "gameObject");
+                        var itemId = GetIdentity(identifier, gameObject);
+                        var containerId = GetIdentity(identifier, Get(constructable, "gameObject"));
+                        if (string.IsNullOrWhiteSpace(itemId) || string.IsNullOrWhiteSpace(containerId))
+                            continue;
+                        // Explicit, unique identity guards are required before issuing server requests.
+                        var constructor = argsType.GetConstructors(All)
+                            .FirstOrDefault(c => c.GetParameters().Length == 5);
+                        if (constructor == null) return false;
+                        var values = new object[] { containerId, lockerType, itemId, pickup, true };
+                        var request = constructor.Invoke(values);
+                        dispatch.Invoke(null, new[] { request });
+                        Trace.Info("CFC_SERVER_TRANSFER_REQUEST: " + wantedTechType +
+                            ", item=" + itemId + ", locker=" + containerId);
+                        return true;
+                    }
+                }
+            }
+            catch (Exception e) { Once("CFC_TRANSFER_FAILED: " + (e.InnerException ?? e).Message); }
+            return false;
+        }
+
+        private static object GetTechType(object pickupable)
+        {
+            var method = pickupable.GetType().GetMethod("GetTechType", All,
+                null, Type.EmptyTypes, null);
+            return method?.Invoke(pickupable, null);
+        }
+
+        private static string GetIdentity(object identifier, object gameObject)
+        {
+            if (gameObject == null) return null;
+            var methods = identifier.GetType().GetMethods(All).Where(m => m.Name == "GetIdentityId");
+            foreach (var method in methods)
+            {
+                var p = method.GetParameters();
+                if (p.Length < 1 || !p[0].ParameterType.IsInstanceOfType(gameObject)) continue;
+                try
+                {
+                    var args = p.Length == 1 ? new[] { gameObject } :
+                        new object[] { gameObject, false };
+                    return method.Invoke(identifier, args) as string;
+                }
+                catch { }
+            }
+            return null;
+        }
+
+        private static object Component(object gameObject, string name, bool parent)
+        {
+            var componentType = Reflect.Type(name);
+            if (componentType == null) return null;
+            var method = gameObject.GetType().GetMethod(
+                parent ? "GetComponentInParent" : "GetComponent",
+                All, null, new[] { typeof(Type) }, null);
+            return method?.Invoke(gameObject, new object[] { componentType });
+        }
+
+        private static float Distance(object positionA, object positionB)
+        {
+            if (positionA == null || positionB == null) return float.MaxValue;
+            var dx = Reflect.Component(positionA, "x") - Reflect.Component(positionB, "x");
+            var dy = Reflect.Component(positionA, "y") - Reflect.Component(positionB, "y");
+            var dz = Reflect.Component(positionA, "z") - Reflect.Component(positionB, "z");
+            return (float)Math.Sqrt(dx * dx + dy * dy + dz * dz);
+        }
+
+        private static bool IsNetworkActive()
+        {
+            try
+            {
+                var network = typeof(Subnautica.API.Features.SubnauticaPlugin).Assembly
+                    .GetType("Subnautica.API.Features.Network");
+                return (bool)(Get(network, "IsMultiplayerActive") ?? false);
+            }
+            catch { return false; }
+        }
+
+        private static object Get(object obj, string name)
+        {
+            if (obj == null) return null;
+            var t = obj as Type ?? obj.GetType();
+            var instance = obj is Type ? null : obj;
+            var field = t.GetField(name, All);
+            if (field != null) return field.GetValue(instance);
+            return t.GetProperty(name, All)?.GetValue(instance, null);
+        }
+
+        private static void Info(string message)
+        {
+            Trace.Info("CFC: " + message);
+            try
+            {
+                var error = Reflect.Type("ErrorMessage");
+                error?.GetMethod("AddMessage", All, null, new[] { typeof(string) }, null)
+                    ?.Invoke(null, new object[] { "Construtor Zero: " + message });
+            }
+            catch { }
+        }
+
+        private static void Once(string message)
+        {
+            if (Warned.Add(message)) Trace.Info(message);
+        }
+    }
+
+    internal static class ContainerConfig
+    {
+        internal static float RangeMeters = 100f;
+        internal static bool Enabled = true;
+        internal static bool ManualPrefetchEnabled = false;
+        internal static string TransferKey = "F6";
+        internal static readonly Dictionary<string, bool> Allowed = new Dictionary<string, bool>(
+            StringComparer.OrdinalIgnoreCase);
+
+        internal static bool IsAllowed(string name) =>
+            !Allowed.TryGetValue(name, out var allowed) || allowed;
+
+        internal static void Load()
+        {
+            try
+            {
+                string folder = Path.Combine(Environment.GetFolderPath(
+                    Environment.SpecialFolder.ApplicationData),
+                    ".botbenson", "Subnautica Below Zero", "Game", "Config");
+                Directory.CreateDirectory(folder);
+                var filename = Path.Combine(folder, "ConstrutorZero.Containers.ini");
+                if (!File.Exists(filename))
+                    File.WriteAllLines(filename, new[] {
+                        "# Craft from Containers BZ - server-safe groundwork.",
+                        "# Multiplayer automatic consumption is NOT implemented.",
+                        "# Manual transfer is experimental. Defaults off to prevent unverified storage changes.",
+                        "enabled=true",
+                        "range_meters=100",
+                        "manual_prefetch_enabled=false",
+                        "transfer_key=F6",
+                        "Locker=true",
+                        "SmallLocker=true"
+                    });
+                foreach (var raw in File.ReadAllLines(filename))
+                {
+                    var parts = raw.Split(new[] { '=' }, 2);
+                    if (parts.Length != 2 || raw.TrimStart().StartsWith("#")) continue;
+                    string name = parts[0].Trim();
+                    string value = parts[1].Trim();
+                    if (name.Equals("enabled", StringComparison.OrdinalIgnoreCase))
+                        Enabled = value.Equals("true", StringComparison.OrdinalIgnoreCase);
+                    else if (name.Equals("manual_prefetch_enabled", StringComparison.OrdinalIgnoreCase))
+                        ManualPrefetchEnabled = value.Equals("true", StringComparison.OrdinalIgnoreCase);
+                    else if (name.Equals("range_meters", StringComparison.OrdinalIgnoreCase) &&
+                        float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var range))
+                        RangeMeters = Math.Max(1f, Math.Min(300f, range));
+                    else if (name.Equals("transfer_key", StringComparison.OrdinalIgnoreCase))
+                        TransferKey = value;
+                    else if (name.Equals("Locker", StringComparison.OrdinalIgnoreCase) ||
+                             name.Equals("SmallLocker", StringComparison.OrdinalIgnoreCase))
+                        Allowed[name] = value.Equals("true", StringComparison.OrdinalIgnoreCase);
+                }
+            }
+            catch (Exception e) { Trace.Info("CFC_CONFIG_WARNING: " + e.Message); }
+        }
+    }
+}
