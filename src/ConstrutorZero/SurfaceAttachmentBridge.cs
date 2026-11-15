@@ -282,8 +282,22 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 var pitch = Float(forward, "y");
                 var liftLimit = Math.Min(1.5f, preferred);
                 var lift = Math.Max(-liftLimit, Math.Min(liftLimit, pitch * preferred));
-                var wallStart = NewVector(origin.GetType(), camX, camY + lift, camZ);
-                return FindWallSurface(builder, wallStart, dir, maxDistance, out hit);
+                for (int attempt = 0; attempt <= 5; attempt++)
+                {
+                    // Near max builder range a tall wall target may fall out
+                    // of reach as the player steps back. Back off toward eye
+                    // level in SMALL increments rather than freeze the object
+                    // at an unreachable height. World-grid quantization still
+                    // picks the same fixed slots until a true range boundary.
+                    var delta = Math.Sign(lift) * Math.Max(
+                        0f, Math.Abs(lift) - attempt * .25f);
+                    var wallStart = NewVector(origin.GetType(),
+                        camX, camY + delta, camZ);
+                    if (FindWallSurface(builder, wallStart, dir,
+                        maxDistance, out hit)) return true;
+                    if (Math.Abs(delta) < .001f) break;
+                }
+                return false;
             }
 
             var candidates = new[] { preferred, preferred - .45f,
