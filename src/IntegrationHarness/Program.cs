@@ -97,8 +97,14 @@ public static class Program
             "Detached power relay fallback");
 
         plugin.OnDisabled();
-        Assert(!Harmony.GetAllPatchedMethods().Any(m => m.DeclaringType == typeof(Builder)),
-            "Harmony hooks removed on disable");
+        Assert(!Harmony.GetAllPatchedMethods()
+            .Where(m => m.DeclaringType == typeof(Builder))
+            .Any(m =>
+            {
+                var info = Harmony.GetPatchInfo(m);
+                return info != null && (info.Prefixes.Count + info.Postfixes.Count +
+                    info.Transpilers.Count + info.Finalizers.Count) != 0;
+            }), "Harmony hooks removed on disable");
         Console.WriteLine("ALL " + count + " CONTRACT/SIMULATION CHECKS PASSED");
     }
 }
