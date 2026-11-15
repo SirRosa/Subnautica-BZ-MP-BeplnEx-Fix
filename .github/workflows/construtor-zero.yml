@@ -35,6 +35,9 @@ jobs:
           if ([Math]::Abs($math::RotationAngle(47.0, 45) - 45) -gt 0.00001) { throw "Default rotation regression" }
           if ([Math]::Abs($math::RotationAngle(43.3, 5) - 45) -gt 0.00001) { throw "Fine rotation regression" }
           if ([Math]::Abs($math::RotationAngle(-44.0, 45) + 45) -gt 0.00001) { throw "Negative rotation regression" }
+          $terrain = $math::SurfacePosition(1.37, 13.337, 2.74, 0, 1, 0, 0.5)
+          if ([Math]::Abs($terrain[1] - 13.337) -gt 0.00001) { throw "Ground altitude must stay on hit plane" }
+          if ([Math]::Abs($terrain[0] - 1.5) -gt 0.00001) { throw "Ground tangent snap regression" }
           $building = $plugin.GetType().Assembly.GetType("Sirro.BZ.MP.ConstrutorZero.BuildingTweaksBridge", $true)
           $unsafe = $building.GetMethod("IsUnsafePlacementEnabled", [System.Reflection.BindingFlags]"Public, NonPublic, Static")
           if ($unsafe.Invoke($null, $null)) { throw "Unsafe placement must be disabled by default" }
@@ -47,7 +50,7 @@ jobs:
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item "src/ConstrutorZero/bin/Release/net472/Sirro.BZ.MP.ConstrutorZero.dll" dist/
           @"
-          CONSTRUTOR ZERO v0.3.1-rc2 -- STABILIZATION RELEASE CANDIDATE
+          CONSTRUTOR ZERO v0.3.2-rc3 -- GAMEPLAY FIX CANDIDATE (TWO-CLIENT RETEST REQUIRED)
           BOT Benson Below Zero Multiplayer 3.0.1. Client plugin only.
           
           ALL TESTS IN CI ARE ABI CONTRACT OR SIMULATED NETWORK TESTS.
@@ -68,33 +71,43 @@ jobs:
           - Wall/ceiling snap and complete pose rollback on reflection exceptions
           - Fail-closed CFC after unexpected Unity/Harmony exceptions
           - Before auto-building, verify all missing recipe items are present
+          - Scan already-placed lockers and match the real MP storage owner
+          - Query ItemsContainer.GetItems by TechType without fake quantities
+          - Snap on tangent plane: do not grid-round ground altitude
+          - G enables furniture ONLY clipping (not base pieces or deconstruction)
           
           ALL AUTO TRANSFERS ARE DISABLED BY DEFAULT:
           %APPDATA%\.botbenson\Subnautica Below Zero\Game\Config\ConstrutorZero.Containers.ini
-          Turn on auto_craft_enabled=true only after verifying normal snap/build.
+          IMPORTANT: existing .ini remains unchanged after upgrading DLL.
+          Set auto_craft_enabled=true to use CFC in the Fabricator.
+          The CFC_STORAGE_SCAN log shows scene_containers, registered and
+          supported_lockers; if supported_lockers=0, attach client logs.
           Turn on auto_build_enabled=true for ordinary furniture, not base pieces.
           Keep auto_place_after_prefetch=false for initial 2-client tests.
           
           KNOWN LIMITATIONS:
           - No atomic server transaction/rollback for multi-item recipes
           - Limited to Locker and SmallLocker for network storage prefetch
-          - No full SnapBuilder/Building Tweaks port, dynamic Attach to Target,
-            unsafe Full Override or base-piece CFC automatic building
+          - No full SnapBuilder/Building Tweaks port or dynamic Attach to Target
+          - G clips ordinary furniture only; structural base pieces are excluded
+          - No base-piece CFC automatic building
           - No multiplayer free-ghost movement after collision check
           - An ACKed item ID cannot be re-requested until client rejoins
           - UI availability is advisory: server may reject a stale item
           
-          See STABILIZATION-301.md for the complete safety and test checklist.
+          See GAMEPLAY-FIXES-301.md for exact setup and game re-test checklist.
+          See STABILIZATION-301.md for background limitations.
           Stop immediately if either player detects duplicate/lost items or desync.
           Preserve the server and BOTH client logs plus a backup of the world.
           
           Source commit: ${{ github.sha }}
-          "@ | Set-Content "dist/README-STABILIZATION.txt"
+          "@ | Set-Content "dist/README-GAMEPLAY-FIXES.txt"
+          Copy-Item "GAMEPLAY-FIXES-301.md" "dist/GAMEPLAY-FIXES-301.md"
           Copy-Item "STABILIZATION-301.md" "dist/STABILIZATION-301.md"
-          Compress-Archive -Path "dist/Sirro.BZ.MP.ConstrutorZero.dll", "dist/README-STABILIZATION.txt", "dist/STABILIZATION-301.md" -DestinationPath "dist/Construtor-Zero-0.3.1-rc2.zip" -Force
+          Compress-Archive -Path "dist/Sirro.BZ.MP.ConstrutorZero.dll", "dist/README-GAMEPLAY-FIXES.txt", "dist/GAMEPLAY-FIXES-301.md", "dist/STABILIZATION-301.md" -DestinationPath "dist/Construtor-Zero-0.3.2-rc3.zip" -Force
           Get-FileHash "dist/Sirro.BZ.MP.ConstrutorZero.dll" -Algorithm SHA256 | Format-List
-          Get-Item "dist/Construtor-Zero-0.3.1-rc2.zip" | Format-List Name,Length
+          Get-Item "dist/Construtor-Zero-0.3.2-rc3.zip" | Format-List Name,Length
       - uses: actions/upload-artifact@v4
         with:
-          name: Construtor-Zero-0.3.1-rc2
-          path: dist/Construtor-Zero-0.3.1-rc2.zip
+          name: Construtor-Zero-0.3.2-rc3
+          path: dist/Construtor-Zero-0.3.2-rc3.zip
