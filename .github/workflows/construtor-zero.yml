@@ -41,40 +41,49 @@ jobs:
           Write-Host "Build contract, grid math and multiplayer safety gates: PASS"
       - name: Run simulated multiplayer Builder Harmony integration checks
         run: dotnet run --project src/IntegrationHarness/IntegrationHarness.csproj -c Release --nologo
-      - name: Create distribution without BepInEx, Nautilus or API stubs
+      - name: Package first-test candidate without BepInEx, Nautilus or API stubs
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item "src/ConstrutorZero/bin/Release/net472/Sirro.BZ.MP.ConstrutorZero.dll" dist/
           @"
-          Construtor Zero development build -- NOT READY FOR PLAY
-          Multiplayer BOT Benson 3.0.1 -- client plugin
+          CONSTRUTOR ZERO v0.2.1-test -- FIRST CONTROLLED TEST CANDIDATE
+          BOT Benson Below Zero Multiplayer 3.0.1. Client plugin only.
 
-          DO NOT INSTALL THIS DEVELOPMENT ARTIFACT IN A PRODUCTION SESSION.
-          Game runtime behavior and multiplayer save/rejoin are NOT CI-tested.
+          FOR A DISPOSABLE COPY OF THE WORLD ONLY. NOT RELEASED FOR NORMAL PLAY.
+          No gameplay session or 2-client server persistence test has passed yet.
 
-          IMPLEMENTED IN CODE (all OFF by default):
-          - auto_craft_enabled: defer Craft until missing ingredients arrive through
-            the server, then replay vanilla uGUI_CraftingMenu.Action once.
-          - auto_build_enabled: stage ingredients for furniture construction.
-          - auto_place_after_prefetch: only replay Builder.TryPlace with identical
-            original ghost pose, after receipt of every ingredient.
-          - manual_prefetch_enabled: F6 pulls missing recipe ingredients one by one.
-          - Server transfer acceptance and inventory item ACKs verified in a simulator.
+          Install the same DLL on both clients:
+          %APPDATA%\.botbenson\Subnautica Below Zero\Game\Plugins\
+          Do not copy Subnautica.API.Contract or any fake assemblies.
+          Remove prior Construtor Zero / NativeSnapBuilder DLLs first.
 
-          REMAINING LIMITATIONS:
-          - Only normal lockers are supported for CFC transfer.
-          - Server API offers no atomic multi-container transaction or rollback.
-          - Original SnapBuilder and Building Tweaks feature parity is incomplete.
-          - Arbitrary Attach to Target requires a network protocol extension.
-          - Unsafe Full Override and custom parent transforms are blocked.
-          - Real BOT Benson 3.0.1 multiplayer has not run these code paths.
+          Existing Snap/Building Tweaks are partial, not full original ports.
+          CFC AUTOMATION IS DISABLED BY DEFAULT:
+          %APPDATA%\.botbenson\Subnautica Below Zero\Game\Config\ConstrutorZero.Containers.ini
+          1. Start and close the game once to generate the configuration.
+          2. After testing ordinary building/snap, set auto_craft_enabled=true
+             to test fabricator crafting from Locker/SmallLocker.
+          3. Set auto_build_enabled=true for NORMAL FURNITURE ONLY.
+             Keep auto_place_after_prefetch=false for the first session:
+             the game will fetch ingredients, then the user clicks to place.
+          4. manual_prefetch_enabled=true optionally allows F6 recipe prefetch.
 
-          Review CONSTRUTOR-ZERO-PARITY.md and ABI-AUDIT-301.md in the repository
-          before treating this as a candidate release.
-          "@ | Set-Content "dist/README-EXPERIMENTAL.txt"
-          Compress-Archive -Path "dist/Sirro.BZ.MP.ConstrutorZero.dll", "dist/README-EXPERIMENTAL.txt" -DestinationPath "dist/Construtor-Zero-development-CFC.zip" -Force
+          NOT SUPPORTED IN THIS CANDIDATE:
+          - Full Attach to Target / dynamic parent hierarchy
+          - Unsafe Full Override and MP deconstruction override
+          - Craft/build directly from lockers without inventory staging
+          - Atomic server transaction/rollback across all recipe items
+          - Other storage types, base-piece automatic ingredient prefetch
+          - Full SnapBuilder raycast, collider, AimTransform and PlaceTool parity
+
+          Stop immediately if item quantities, placement or world sync disagree.
+          Preserve BOTH client logs and the server log, plus steps and time.
+          Consult FIRST-TEST-301.md in the GitHub branch for a detailed checklist.
+          Source commit: ${{ github.sha }}
+          "@ | Set-Content "dist/README-FIRST-TEST.txt"
+          Compress-Archive -Path "dist/Sirro.BZ.MP.ConstrutorZero.dll", "dist/README-FIRST-TEST.txt" -DestinationPath "dist/Construtor-Zero-0.2.1-first-test.zip" -Force
       - uses: actions/upload-artifact@v4
         with:
-          name: Construtor-Zero-development-CFC
-          path: dist/Construtor-Zero-development-CFC.zip
+          name: Construtor-Zero-first-test-301
+          path: dist/Construtor-Zero-0.2.1-first-test.zip
