@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reflection;
 using System.Globalization;
 using System.Collections;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Subnautica.API.Enums;
 using Subnautica.API.Features;
@@ -196,13 +197,28 @@ namespace Sirro.BZ.MP.ConstrutorZero
 
     internal static class Reflect
     {
+        private static readonly Dictionary<string, Type> TypeCache =
+            new Dictionary<string, Type>(StringComparer.Ordinal);
+
         internal static Type Type(string fullName)
         {
+            if (string.IsNullOrWhiteSpace(fullName)) return null;
+            lock (TypeCache)
+                if (TypeCache.TryGetValue(fullName, out var known))
+                    return known;
             foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
             {
-                try { var t = asm.GetType(fullName, false); if (t != null) return t; }
+                try
+                {
+                    var t = asm.GetType(fullName, false);
+                    if (t == null) continue;
+                    lock (TypeCache) TypeCache[fullName] = t;
+                    return t;
+                }
                 catch { }
             }
+            // Do not cache missing types; other native mods may still be
+            // loading their assemblies when Construtor Zero enables.
             return null;
         }
         internal static float Component(object v, string axis) =>
