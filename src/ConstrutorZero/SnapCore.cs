@@ -374,19 +374,27 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 float lowest = float.PositiveInfinity;
                 foreach (var obb in list)
                 {
-                    var corners = obb?.GetType().GetMethod("GetCorners",
-                        BindingFlags.Public | BindingFlags.Instance,
-                        null, Type.EmptyTypes, null)?.Invoke(obb, null)
-                        as IEnumerable;
-                    if (corners == null) continue;
-                    foreach (var corner in corners)
-                    {
-                        if (corner == null) continue;
-                        var cy = Reflect.Component(corner, "y");
-                        if (float.IsNaN(cy) || float.IsInfinity(cy)) continue;
-                        if (cy < lowest) lowest = cy;
-                        found = true;
-                    }
+                    if (obb == null) continue;
+                    // Important: GetCorners() from Tobey SnapBuilder is an
+                    // EXTENSION method, not an instance method on the native
+                    // BZ OrientedBounds type. The previous reflection code
+                    // never obtained real corners and silently skipped the
+                    // floor alignment. The source extension computes:
+                    // bottom = bounds.position.y - bounds.extents.y.
+                    var type = obb.GetType();
+                    var position = type.GetField("position",
+                        BindingFlags.Public | BindingFlags.NonPublic |
+                        BindingFlags.Instance)?.GetValue(obb);
+                    var extents = type.GetField("extents",
+                        BindingFlags.Public | BindingFlags.NonPublic |
+                        BindingFlags.Instance)?.GetValue(obb);
+                    if (position == null || extents == null) continue;
+                    float cy = Reflect.Component(position, "y");
+                    float ey = Math.Abs(Reflect.Component(extents, "y"));
+                    if (float.IsNaN(cy) || float.IsInfinity(cy) ||
+                        float.IsNaN(ey) || float.IsInfinity(ey)) continue;
+                    lowest = Math.Min(lowest, cy - ey);
+                    found = true;
                 }
                 if (!found || Math.Abs(lowest) > 10f) return false;
                 bottom = lowest;
@@ -394,7 +402,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
             }
             catch
             {
-                // Unrecognized bounds API must NOT move furniture vertically.
+                // On unknown geometry never invent a vertical offset.
                 return false;
             }
         }
