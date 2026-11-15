@@ -518,8 +518,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
             if (!IsMultiplayer() && IsUnsafePlacementEnabled()) __result = true;
         }
 
-        private static void CheckAsSubModulePostfix(ref bool __result) =>
-            SurfaceAttachmentBridge.CheckAsSubModulePostfix(ref __result);
+        private static void CheckAsSubModulePostfix(ref bool __result, object[] __args) =>
+            SurfaceAttachmentBridge.CheckAsSubModulePostfix(ref __result, __args);
 
         private static void AllowedPostfix(ref bool __result)
         {
