@@ -42,6 +42,12 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 if (techType == null || string.Equals(techType.ToString(), "None",
                     StringComparison.OrdinalIgnoreCase))
                     return true;
+
+                // Don't ask the server to move resources for a placement already
+                // rejected by the game's normal collision/surface validation.
+                var validPlacement = CraftFromContainersBridge.Read(builder, "canPlace");
+                if (!(validPlacement is bool) || !(bool)validPlacement)
+                    return true;
                 if (RecipePrefetch.InventoryHasCompleteRecipe(techType)) return true;
 
                 // Never compete with a manual or crafting transaction.
