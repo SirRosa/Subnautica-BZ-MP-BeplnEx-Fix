@@ -20,6 +20,7 @@ public static class Program
 
     public static void Main()
     {
+        AbiTests.Run(Assert);
         var plugin = new MainPlugin();
         Assert(plugin.PluginType.ToString() == "Client", "Native plugin type");
         Assert(plugin.Name.StartsWith("Construtor Zero"), "One combined plugin");
