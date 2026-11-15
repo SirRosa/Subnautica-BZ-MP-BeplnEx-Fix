@@ -455,9 +455,24 @@ public static class Targeting
 }
 public class OrientedBounds
 {
-    public UnityEngine.Vector3[] corners;
-    public OrientedBounds(params UnityEngine.Vector3[] points) { corners = points; }
-    public UnityEngine.Vector3[] GetCorners() => corners;
+    // These are the real native data members used by the original
+    // SnapBuilder's EXTERNAL GetCorners extension. The native game type
+    // does not declare GetCorners as an instance method.
+    public UnityEngine.Vector3 position;
+    public UnityEngine.Vector3 extents;
+    public OrientedBounds(params UnityEngine.Vector3[] points)
+    {
+        if (points == null || points.Length == 0) return;
+        float minX = points.Min(p => p.x), maxX = points.Max(p => p.x);
+        float minY = points.Min(p => p.y), maxY = points.Max(p => p.y);
+        float minZ = points.Min(p => p.z), maxZ = points.Max(p => p.z);
+        position = new UnityEngine.Vector3(
+            (minX + maxX) / 2f, (minY + maxY) / 2f,
+            (minZ + maxZ) / 2f);
+        extents = new UnityEngine.Vector3(
+            (maxX - minX) / 2f, (maxY - minY) / 2f,
+            (maxZ - minZ) / 2f);
+    }
 }
 public static class Builder
 {
