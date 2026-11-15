@@ -330,6 +330,16 @@ namespace Sirro.BZ.MP.ConstrutorZero
                         var values = new object[] { containerId, lockerType, itemId, pickup, true };
                         var request = constructor.Invoke(values);
                         dispatch.Invoke(null, new[] { request });
+                        // In BOT Benson the storage processor sets IsAllowed=false
+                        // and emits a server packet. Leaving it true means the
+                        // event was not handled, so no network request took place.
+                        var isAllowed = Get(request, "IsAllowed");
+                        if (!(isAllowed is bool) || (bool)isAllowed)
+                        {
+                            Once("CFC_TRANSFER_BLOCKED: no multiplayer storage handler " +
+                                "accepted the transfer event");
+                            return false;
+                        }
                         PendingItemIds[itemId] = now;
                         lastSentItemId = itemId;
                         Trace.Info("CFC_SERVER_TRANSFER_REQUEST: " + wantedTechType +
