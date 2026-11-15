@@ -771,6 +771,20 @@ public static class Program
             "Vanilla success at camera Y=5.7 cannot detach floor Locker");
         Assert(ReferenceEquals(Builder.LastSubmoduleCollider, Physics.WorldFloor),
             "Correct floor collider supersedes successful pitched camera ray");
+        foreach (float pitch in new[] { .95f, .6f, .2f, 0f, -.3f, -.69f, -.85f, -.99f })
+        {
+            MainCamera.camera.transform.forward = new Vector3(
+                0f, pitch, (float)Math.Sqrt(Math.Max(.0001f,1f-pitch*pitch)));
+            Builder.placePosition = new Vector3(0f,8f,0f);
+            Assert(Builder.UpdateAllowed(),
+                "Locker remains placeable across camera pitch sweep: " + pitch);
+            Eq(Builder.placePosition.y,1.25f,
+                "Locker pivot stays on ground through vanilla ray success boundary");
+            Eq(Builder.placePosition.x,gluedX,
+                "Locker grid X stays static through pitch transitions");
+            Eq(Builder.placePosition.z,gluedZ,
+                "Locker grid Z stays static through pitch transitions");
+        }
         Builder.SimulateVanillaCameraHit = false;
 
         Physics.FloorHeight = -1f;
