@@ -149,10 +149,12 @@ namespace Sirro.BZ.MP.ConstrutorZero
                     Type.EmptyTypes, null);
                 if (place == null) throw new MissingMethodException("Builder.TryPlace()");
                 bypass = true;
-                bool placed = (bool)place.Invoke(null, null);
-                CraftFromContainersBridge.Report(placed ?
-                    "Construction placed using normal multiplayer Builder.TryPlace" :
-                    "Vanilla Builder.TryPlace rejected the construction");
+                // BOT Benson's Builder.TryPlace prefix sends a network request,
+                // then returns false to prevent original singleplayer placement.
+                // Therefore the return value is NOT a server-acceptance signal.
+                place.Invoke(null, null);
+                CraftFromContainersBridge.Report("Vanilla Builder.TryPlace interceptor " +
+                    "invoked; the multiplayer server will determine placement");
             }
             catch (Exception e)
             {
