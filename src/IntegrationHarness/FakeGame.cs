@@ -14,7 +14,7 @@ namespace UnityEngine
     }
     public static class Time
     {
-        private static int frame;
+        private static int frame = 1;
         public static bool ThrowOnFrameRead;
         public static int frameCount
         {
