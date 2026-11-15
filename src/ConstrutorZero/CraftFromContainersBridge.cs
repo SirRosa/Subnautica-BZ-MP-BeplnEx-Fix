@@ -36,6 +36,14 @@ namespace Sirro.BZ.MP.ConstrutorZero
         private static MethodInfo patch;
         private static Type harmonyMethod;
         private static object lastRequestedTechType;
+        private static string lastSentItemId;
+        internal static string LastRequestedUniqueId => lastSentItemId;
+        internal static bool NetworkActive => IsNetworkActive();
+        internal static object Read(object instance, string name) => Get(instance, name);
+        internal static void AcknowledgeTransfer(string itemId)
+        {
+            if (itemId != null) PendingItemIds.Remove(itemId);
+        }
         private static int lastTransferFrame = -1;
         private static int lastPruneFrame = -1;
         private static int installedHooks;
@@ -66,6 +74,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 // crafting counts until secure synchronous consumption is possible.
                 Hook("Inventory", "GetPickupCount", null, nameof(InventoryCountObserved));
                 Hook("Inventory", "DestroyItem", null, nameof(InventoryDestroyObserved));
+                Hook("Inventory", "OnAddItem", null, nameof(InventoryAdded));
+                Hook("uGUI_RecipeEntry", "UpdateIngredients", null, nameof(RecipeObserved));
                 Hook("Player", "Update", null, nameof(PlayerUpdate));
                 enabled = true;
                 Trace.Info("CFC_READY: hooks=" + installedHooks +
@@ -112,8 +122,10 @@ namespace Sirro.BZ.MP.ConstrutorZero
                     unpatch.Invoke(harmony, new object[] { "sirro.bz.mp.construtor-zero.containers" });
             }
             catch (Exception e) { Trace.Info("CFC_UNPATCH_FAILED: " + e.Message); }
+            RecipePrefetch.Reset();
             Storage.Clear();
             PendingItemIds.Clear();
+            lastSentItemId = null;
             lastRequestedTechType = null;
             lastPruneFrame = -1;
             installedHooks = 0;
@@ -168,6 +180,33 @@ namespace Sirro.BZ.MP.ConstrutorZero
             lastRequestedTechType = __args[0];
         }
 
+        private static void RecipeObserved(object __instance)
+        {
+            if (!enabled || !ContainerConfig.Enabled || !ContainerConfig.ManualPrefetchEnabled)
+                return;
+            RecipePrefetch.ObserveRecipe(__instance);
+        }
+
+        private static void InventoryAdded(object __instance, object[] __args)
+        {
+            if (!enabled || !ContainerConfig.Enabled || !RecipePrefetch.IsActive)
+                return;
+            try
+            {
+                var inventory = Reflect.Type("Inventory");
+                if (__instance == null || !ReferenceEquals(__instance, Get(inventory, "main")))
+                    return;
+                if (__args == null || __args.Length == 0 || __args[0] == null) return;
+                var pickup = Get(__args[0], "item");
+                var gameObject = Get(pickup, "gameObject");
+                var net = typeof(Subnautica.API.Features.SubnauticaPlugin).Assembly
+                    .GetType("Subnautica.API.Features.Network");
+                var id = GetIdentity(Get(net, "Identifier"), gameObject);
+                RecipePrefetch.AcknowledgeInventoryItem(id, Info);
+            }
+            catch (Exception e) { Once("CFC_INVENTORY_ACK_FAILED: " + e.Message); }
+        }
+
         private static void PlayerUpdate()
         {
             if (!enabled || !ContainerConfig.Enabled) return;
@@ -179,6 +218,12 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 lastPruneFrame = currentFrame;
                 PruneDeadStorages();
             }
+            if (!IsNetworkActive())
+            {
+                RecipePrefetch.Cancel("Multiplayer disconnected; requests cancelled", Info);
+                return;
+            }
+            RecipePrefetch.Pump(Info);
             if (!ContainerConfig.ManualPrefetchEnabled)
                 return;
             try
@@ -193,13 +238,15 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 var hotkey = Enum.Parse(keyCode, ContainerConfig.TransferKey);
                 if (!(bool)down.Invoke(null, new[] { hotkey })) return;
                 lastTransferFrame = frame;
-                if (lastRequestedTechType == null)
+                if (RecipePrefetch.IsActive)
                 {
-                    Info("No ingredient selected; open a crafting/building recipe first");
+                    RecipePrefetch.Cancel("Recipe prefetch cancelled by user", Info);
                     return;
                 }
-                if (!TryRequestOne(lastRequestedTechType))
-                    Info("No eligible nearby locker item or multiplayer transfer API unavailable");
+                if (RecipePrefetch.BeginLastObserved(Info))
+                    RecipePrefetch.Pump(Info);
+                else if (lastRequestedTechType != null)
+                    Trace.Info("CFC: last vanilla inventory query was " + lastRequestedTechType);
             }
             catch (Exception e) { Once("CFC_HOTKEY: " + e.Message); }
         }
@@ -272,6 +319,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
                         var request = constructor.Invoke(values);
                         dispatch.Invoke(null, new[] { request });
                         PendingItemIds[itemId] = now;
+                        lastSentItemId = itemId;
                         Trace.Info("CFC_SERVER_TRANSFER_REQUEST: " + wantedTechType +
                             ", item=" + itemId + ", locker=" + containerId);
                         return true;
@@ -391,7 +439,9 @@ namespace Sirro.BZ.MP.ConstrutorZero
                     File.WriteAllLines(filename, new[] {
                         "# Craft from Containers BZ - server-safe groundwork.",
                         "# Multiplayer automatic consumption is NOT implemented.",
-                        "# Manual transfer is experimental. Defaults off to prevent unverified storage changes.",
+                        "# Experimental F6 prefetch of missing ingredients for most recently updated pinned recipe.",
+                        "# One server-validated locker transfer at a time; craft manually after actual inventory ACK.",
+                        "# Disabled by default; no optimistic ingredient counts or local locker deletion.",
                         "enabled=true",
                         "range_meters=100",
                         "manual_prefetch_enabled=false",
