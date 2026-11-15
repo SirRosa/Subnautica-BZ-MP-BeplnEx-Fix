@@ -31,6 +31,18 @@ namespace Sirro.BelowZero.Multiplayer.PortProbe
 
             try
             {
+                // Emit to BOT Benson's own log, not only Unity's Player.log.
+                // Reflection keeps this smoke test compilable without redistributing game assemblies.
+                var apiAssembly = typeof(SubnauticaPlugin).Assembly;
+                var apiLog = apiAssembly.GetType("Subnautica.API.Features.Log", false);
+                var info = apiLog?.GetMethod("Info", BindingFlags.Public | BindingFlags.Static,
+                    null, new[] { typeof(string) }, null);
+                info?.Invoke(null, new object[] { message });
+            }
+            catch (Exception) { /* diagnostics must never crash the game */ }
+
+            try
+            {
                 // Avoid compile-time dependencies on Unity/game assemblies.
                 var debug = AppDomain.CurrentDomain.GetAssemblies()
                     .Select(a => a.GetType("UnityEngine.Debug", false))
