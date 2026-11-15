@@ -36,7 +36,13 @@ namespace UnityEngine
         public float x, y, z, w;
         public Vector3 eulerAngles { get { return new Vector3(x,y,z); } }
         public Quaternion(float x, float y, float z, float w) { this.x=x; this.y=y; this.z=z; this.w=w; }
-        public static Quaternion Euler(Vector3 euler) => new Quaternion(euler.x, euler.y, euler.z, 1f);
+        public static bool ThrowOnEuler;
+        public static Quaternion Euler(Vector3 euler)
+        {
+            if (ThrowOnEuler) throw new InvalidOperationException(
+                "Simulated Unity Euler conversion failure");
+            return new Quaternion(euler.x, euler.y, euler.z, 1f);
+        }
     }
     public class Transform
     {
