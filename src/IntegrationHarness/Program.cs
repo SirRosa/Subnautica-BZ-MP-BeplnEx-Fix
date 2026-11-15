@@ -97,6 +97,15 @@ public static class Program
             "Detached power relay fallback");
 
         plugin.OnDisabled();
+        foreach (var method in Harmony.GetAllPatchedMethods().Where(m => m.DeclaringType == typeof(Builder)))
+        {
+            var patchInfo = Harmony.GetPatchInfo(method);
+            if (patchInfo != null)
+                Console.WriteLine("POST_UNLOAD " + method.Name + ": " +
+                    string.Join(",", patchInfo.Prefixes.Concat(patchInfo.Postfixes)
+                        .Concat(patchInfo.Transpilers).Concat(patchInfo.Finalizers)
+                        .Select(p => p.owner + "/" + p.PatchMethod.Name)));
+        }
         Assert(!Harmony.GetAllPatchedMethods()
             .Where(m => m.DeclaringType == typeof(Builder))
             .Any(m =>
