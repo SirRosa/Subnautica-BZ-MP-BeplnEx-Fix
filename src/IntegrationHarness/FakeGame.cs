@@ -2,11 +2,19 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Linq;
 
 // Fakes only for CI: NOT shipped with the game plugin.
 // Names/signatures deliberately imitate calls in the published Subnautica BZ code.
 namespace UnityEngine
 {
+    public class Object
+    {
+        // Scene scan behaves like Unity's non-generic FindObjectsOfType(Type).
+        public static object[] FindObjectsOfType(Type type) =>
+            StorageContainer.SceneObjects.Where(x => type.IsInstanceOfType(x))
+                .Cast<object>().ToArray();
+    }
     public enum KeyCode
     {
         Mouse2, Mouse3, Mouse4, LeftControl, RightControl, LeftAlt, RightAlt,
@@ -59,6 +67,7 @@ namespace UnityEngine
     public class Transform
     {
         public GameObject gameObject = new GameObject();
+        public Transform parent;
         public Vector3 position;
         // Match Unity's translation part of Transform, rather than the old
         // fake identity transform that hid incorrect local/world snapping.
@@ -83,7 +92,22 @@ namespace UnityEngine
     }
 }
 public enum TechType { None, Titanium, Copper, Locker, SmallLocker, TestRecipe, DuplicateIngredientRecipe }
-public class ItemsContainer {}
+public class ItemsContainer
+{
+    private readonly List<InventoryItem> contents = new List<InventoryItem>();
+    public UnityEngine.Transform tr = new UnityEngine.Transform();
+    public int Count => contents.Count;
+    public void Add(InventoryItem item) => contents.Add(item);
+    public bool Remove(InventoryItem item) => contents.Remove(item);
+    public void Clear() => contents.Clear();
+    // Real BZ ItemsContainer is not an enumerable InventoryItem list.
+    // Its supported API is GetItems(TechType, List<InventoryItem>).
+    public void GetItems(TechType type, List<InventoryItem> result)
+    {
+        result.AddRange(contents.Where(i => i.item?.GetTechType() == type));
+    }
+    public int GetCount(TechType type) => contents.Count(i => i.item?.GetTechType() == type);
+}
 public class Ingredient
 {
     public TechType techType { get; }
@@ -183,8 +207,14 @@ public sealed class InventoryItem
 }
 public class StorageContainer
 {
+    public static readonly List<StorageContainer> SceneObjects = new List<StorageContainer>();
     public UnityEngine.Transform storageRoot = new UnityEngine.Transform();
-    public List<InventoryItem> container = new List<InventoryItem>();
+    public ItemsContainer container = new ItemsContainer();
+    public StorageContainer()
+    {
+        container.tr.parent = storageRoot;
+        SceneObjects.Add(this);
+    }
     [MethodImpl(MethodImplOptions.NoInlining)]
     public void Awake() { }
     [MethodImpl(MethodImplOptions.NoInlining)]
