@@ -61,8 +61,14 @@ public static class Program
         Input.Down.Add(KeyCode.G);
         Builder.Update();
         Input.Clear();
-        Assert(!Builder.UpdateAllowed(),"Unsafe Full Override blocked");
+        // Even an explicit unsafe setting must remain blocked while connected to MP.
+        var cfg = plugin.GetType().Assembly.GetType("Sirro.BZ.MP.ConstrutorZero.Cfg", true);
+        var unsafeField = cfg.GetField("AllowUnsafeWorldChanges",
+            BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+        unsafeField.SetValue(null, true);
+        Assert(!Builder.UpdateAllowed(),"Unsafe Full Override blocked even when configured true");
         Assert(!Builder.ValidateOutdoor(),"Unsafe outdoor override blocked");
+        unsafeField.SetValue(null, false);
         Assert(!constructable.DeconstructionAllowed(),"Unsafe deconstruction blocked");
         var o = new List<GameObject> { new GameObject() };
         Builder.GetObstacles(ref o);
