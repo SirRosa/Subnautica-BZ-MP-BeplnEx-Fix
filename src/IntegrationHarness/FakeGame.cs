@@ -80,6 +80,7 @@ namespace UnityEngine
     public struct RaycastHit
     {
         public Vector3 normal { get; set; }
+        public Vector3 point { get; set; }
         public Transform transform { get; set; }
     }
     public class GameObject
@@ -316,8 +317,15 @@ public static class Targeting
         return false;
     }
 }
+public class OrientedBounds
+{
+    public UnityEngine.Vector3[] corners;
+    public OrientedBounds(params UnityEngine.Vector3[] points) { corners = points; }
+    public UnityEngine.Vector3[] GetCorners() => corners;
+}
 public static class Builder
 {
+    public static List<OrientedBounds> bounds = new List<OrientedBounds>();
     public static bool CanPlace = true;
     public static bool CollisionSpaceAvailable = true;
     public static bool canPlace => CanPlace;
