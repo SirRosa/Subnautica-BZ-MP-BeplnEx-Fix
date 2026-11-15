@@ -38,6 +38,7 @@ jobs:
           $terrain = $math::SurfacePosition(1.37, 13.337, 2.74, 0, 1, 0, 0.5)
           if ([Math]::Abs($terrain[1] - 13.337) -gt 0.00001) { throw "Ground altitude must stay on hit plane" }
           if ([Math]::Abs($terrain[0] - 1.5) -gt 0.00001) { throw "Ground tangent snap regression" }
+          if ([Math]::Abs($math::GroundPivotHeight(3.2, -0.95) - 4.15) -gt 0.00001) { throw "Floor contact height regression" }
           $building = $plugin.GetType().Assembly.GetType("Sirro.BZ.MP.ConstrutorZero.BuildingTweaksBridge", $true)
           $unsafe = $building.GetMethod("IsUnsafePlacementEnabled", [System.Reflection.BindingFlags]"Public, NonPublic, Static")
           if ($unsafe.Invoke($null, $null)) { throw "Unsafe placement must be disabled by default" }
@@ -50,7 +51,7 @@ jobs:
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item "src/ConstrutorZero/bin/Release/net472/Sirro.BZ.MP.ConstrutorZero.dll" dist/
           @"
-          CONSTRUTOR ZERO v0.3.2-rc3 -- GAMEPLAY FIX CANDIDATE (TWO-CLIENT RETEST REQUIRED)
+          CONSTRUTOR ZERO v0.3.3-rc4 -- TERRAIN + CFC UI PERFORMANCE CANDIDATE
           BOT Benson Below Zero Multiplayer 3.0.1. Client plugin only.
           
           ALL TESTS IN CI ARE ABI CONTRACT OR SIMULATED NETWORK TESTS.
@@ -75,6 +76,12 @@ jobs:
           - Query ItemsContainer.GetItems by TechType without fake quantities
           - Snap on tangent plane: do not grid-round ground altitude
           - G enables furniture ONLY clipping (not base pieces or deconstruction)
+          - Correct floor-object pivot against physical RaycastHit.point + Builder.bounds
+          - Preserve original ground-only furniture permissions unless G is enabled
+          - Cache all types of locker stock in one snapshot per 850ms
+          - Pinned and fabricator tooltips display nearby ingredients green
+          - Normal CFC transfer messages are silent on HUD by default
+          - Actual auto-build action refreshes stock and blocks unsafe no-resource packets
           
           ALL AUTO TRANSFERS ARE DISABLED BY DEFAULT:
           %APPDATA%\.botbenson\Subnautica Below Zero\Game\Config\ConstrutorZero.Containers.ini
@@ -84,6 +91,9 @@ jobs:
           supported_lockers; if supported_lockers=0, attach client logs.
           Turn on auto_build_enabled=true for ordinary furniture, not base pieces.
           Keep auto_place_after_prefetch=false for initial 2-client tests.
+          New option: show_cfc_messages=false (default, no HUD clutter).
+          New option: ground_align=true in ConstrutorZero.ini.
+          No setting is overwritten if its .ini file already exists.
           
           KNOWN LIMITATIONS:
           - No atomic server transaction/rollback for multi-item recipes
@@ -95,19 +105,18 @@ jobs:
           - An ACKed item ID cannot be re-requested until client rejoins
           - UI availability is advisory: server may reject a stale item
           
-          See GAMEPLAY-FIXES-301.md for exact setup and game re-test checklist.
+          See PLACEMENT-UI-301.md for current install and mandatory 2-client tests.
           See STABILIZATION-301.md for background limitations.
           Stop immediately if either player detects duplicate/lost items or desync.
           Preserve the server and BOTH client logs plus a backup of the world.
           
           Source commit: ${{ github.sha }}
-          "@ | Set-Content "dist/README-GAMEPLAY-FIXES.txt"
-          Copy-Item "GAMEPLAY-FIXES-301.md" "dist/GAMEPLAY-FIXES-301.md"
-          Copy-Item "STABILIZATION-301.md" "dist/STABILIZATION-301.md"
-          Compress-Archive -Path "dist/Sirro.BZ.MP.ConstrutorZero.dll", "dist/README-GAMEPLAY-FIXES.txt", "dist/GAMEPLAY-FIXES-301.md", "dist/STABILIZATION-301.md" -DestinationPath "dist/Construtor-Zero-0.3.2-rc3.zip" -Force
+          "@ | Set-Content "dist/README-PLACEMENT-UI.txt"
+          Copy-Item "PLACEMENT-UI-301.md" "dist/PLACEMENT-UI-301.md"
+          Compress-Archive -Path "dist/Sirro.BZ.MP.ConstrutorZero.dll", "dist/README-PLACEMENT-UI.txt", "dist/PLACEMENT-UI-301.md" -DestinationPath "dist/Construtor-Zero-0.3.3-rc4.zip" -Force
           Get-FileHash "dist/Sirro.BZ.MP.ConstrutorZero.dll" -Algorithm SHA256 | Format-List
-          Get-Item "dist/Construtor-Zero-0.3.2-rc3.zip" | Format-List Name,Length
+          Get-Item "dist/Construtor-Zero-0.3.3-rc4.zip" | Format-List Name,Length
       - uses: actions/upload-artifact@v4
         with:
-          name: Construtor-Zero-0.3.2-rc3
-          path: dist/Construtor-Zero-0.3.2-rc3.zip
+          name: Construtor-Zero-0.3.3-rc4
+          path: dist/Construtor-Zero-0.3.3-rc4.zip
