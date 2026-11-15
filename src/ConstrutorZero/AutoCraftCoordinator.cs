@@ -138,11 +138,23 @@ namespace Sirro.BZ.MP.ConstrutorZero
             }
 
             var menu = menuRef?.Target;
+            var currentRecipe = node == null ? null :
+                CraftFromContainersBridge.Read(node, "techType");
+            var currentAction = node == null ? null :
+                CraftFromContainersBridge.Read(node, "action");
             if (menu == null || node == null || recipeType == null ||
                 IsDestroyedUnityObject(menu) ||
+                !Equals(currentRecipe, recipeType) ||
+                currentAction == null || !string.Equals(currentAction.ToString(),
+                    "Craft", StringComparison.OrdinalIgnoreCase) ||
+                !RecipePrefetch.RequiresIngredientCosts() ||
+                !CraftingRecipeUnlocked(recipeType) ||
                 !RecipePrefetch.InventoryHasCompleteRecipe(recipeType))
             {
-                Cancel("Craft was not resumed: UI closed or inventory changed");
+                // No silent replay when the UI has reused its recipe node, the
+                // blueprint was revoked, or game mode changed while waiting.
+                // Already delivered materials remain in vanilla inventory.
+                Cancel("Deferred craft no longer matches the original valid recipe");
                 return;
             }
 
