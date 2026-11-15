@@ -75,7 +75,14 @@ namespace Sirro.BZ.MP.ConstrutorZero
             // Missing resources may be in a locker. Abort the first action only
             // when the validated, explicit prefetch queue was actually created.
             if (!RecipePrefetch.Begin(wanted, CraftFromContainersBridge.Report))
-                return true;
+            {
+                // The advertised locker stock may have changed after UI
+                // rendering. Vanilla cannot craft with missing inventory
+                // items; do not dispatch an unvalidated network action.
+                CraftFromContainersBridge.Report(
+                    "Crafting materials unavailable or transfer already active");
+                return false;
+            }
 
             menuRef = new WeakReference(__instance);
             node = requestedNode;
@@ -86,6 +93,33 @@ namespace Sirro.BZ.MP.ConstrutorZero
             CraftFromContainersBridge.Report("Craft postponed until all ingredients " +
                 "arrive through the multiplayer server");
             return false;
+        }
+
+        /// <summary>
+        /// UI-only affordability extension for the real game's
+        /// uGUI_CraftingMenu.ActionAvailable(Node). Do not change vanilla
+        /// inventory counts or crafting resource consumption.
+        /// </summary>
+        internal static bool CanAdvertise(object requestedNode)
+        {
+            if (requestedNode == null || waiting ||
+                !ContainerConfig.Enabled || !ContainerConfig.AutoCraftEnabled ||
+                !CraftFromContainersBridge.Ready ||
+                !CraftFromContainersBridge.NetworkActive)
+                return false;
+            try
+            {
+                var action = CraftFromContainersBridge.Read(requestedNode, "action");
+                if (action == null || !string.Equals(action.ToString(),
+                    "Craft", StringComparison.OrdinalIgnoreCase)) return false;
+                var wanted = CraftFromContainersBridge.Read(requestedNode, "techType");
+                return wanted != null &&
+                    !string.Equals(wanted.ToString(), "None",
+                        StringComparison.OrdinalIgnoreCase) &&
+                    CraftingRecipeUnlocked(wanted) &&
+                    RecipePrefetch.CanSourceMissingIngredients(wanted);
+            }
+            catch { return false; }
         }
 
         private static bool CraftingRecipeUnlocked(object recipe)
