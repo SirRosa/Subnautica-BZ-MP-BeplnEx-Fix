@@ -278,7 +278,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
         {
             if (args.Length < 3 || args[2] == null) return;
             var worldNormal = hit.GetType().GetProperty("normal")?.GetValue(hit, null);
-            if (worldNormal == null || Math.Abs(Reflect.Component(worldNormal, "y")) < .85f)
+            if (worldNormal == null || Reflect.Component(worldNormal, "y") < .85f)
                 return; // Do not distort wall or ceiling placement rotation.
 
             var rotation = args[2];
