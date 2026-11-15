@@ -274,6 +274,19 @@ namespace Sirro.BZ.MP.ConstrutorZero
             if (collider == null || gameObject == null || point == null)
                 return false;
 
+            // Current BZ CheckAsSubModule also rejects SeaTruck surfaces
+            // and requires Constructable.CheckFlags (which takes extra
+            // underwater/hit-point parameters in later BZ builds). A
+            // fallback raycast is NOT permission to bypass these rules.
+            var seaTruck = Reflect.Type("SeaTruckSegment");
+            var parentComponent = gameObject.GetType().GetMethod(
+                "GetComponentInParent", All, null, new[] { typeof(Type) }, null);
+            if (seaTruck != null &&
+                (parentComponent == null ||
+                 parentComponent.Invoke(gameObject, new object[] { seaTruck }) != null))
+                return false;
+            if (!CheckConstructableFlags(builder, point)) return false;
+
             var checkTag = builder.GetMethods(All).FirstOrDefault(m =>
                 m.Name == "CheckTag" && m.GetParameters().Length == 1 &&
                 m.GetParameters()[0].ParameterType.IsInstanceOfType(collider));
@@ -322,6 +335,44 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 if (!(bool)validate.Invoke(null, new[] { root })) return false;
             }
             return true;
+        }
+
+        private static bool CheckConstructableFlags(Type builder, object point)
+        {
+            var constructable = Reflect.Type("Constructable");
+            if (constructable == null) return false;
+            var permitted = new[] {
+                Read(builder, "allowedInBase"),
+                Read(builder, "allowedInSub"),
+                Read(builder, "allowedOutside")
+            };
+            if (permitted.Any(v => !(v is bool))) return false;
+            var checkFlags = constructable.GetMethods(All).FirstOrDefault(m =>
+            {
+                var ps = m.GetParameters();
+                return m.Name == "CheckFlags" && m.IsStatic &&
+                    m.ReturnType == typeof(bool) &&
+                    (ps.Length == 5 || ps.Length == 3) &&
+                    ps[0].ParameterType == typeof(bool) &&
+                    ps[1].ParameterType == typeof(bool) &&
+                    ps[2].ParameterType == typeof(bool) &&
+                    (ps.Length == 3 ||
+                     (ps[3].ParameterType == typeof(bool) &&
+                      ps[4].ParameterType.IsInstanceOfType(point)));
+            });
+            if (checkFlags == null) return false;
+            var args = new object[] {
+                permitted[0], permitted[1], permitted[2]
+            };
+            if (checkFlags.GetParameters().Length == 5)
+            {
+                var underwater = Read(builder, "allowedUnderwater");
+                if (!(underwater is bool)) return false;
+                args = new object[] {
+                    permitted[0], permitted[1], permitted[2], underwater, point
+                };
+            }
+            return (bool)checkFlags.Invoke(null, args);
         }
 
         private static bool CheckPlacementSpace(Type builder,
