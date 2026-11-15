@@ -171,8 +171,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
         private static void PlayerUpdate()
         {
             if (!enabled || !ContainerConfig.Enabled) return;
-            var time = Reflect.Type("UnityEngine.Time");
-            var currentFrame = Convert.ToInt32(Get(time, "frameCount") ?? 0);
+            var unityTimeType = Reflect.Type("UnityEngine.Time");
+            var currentFrame = Convert.ToInt32(Get(unityTimeType, "frameCount") ?? 0);
             if (lastPruneFrame < 0 || currentFrame < lastPruneFrame ||
                 currentFrame - lastPruneFrame >= 240)
             {
