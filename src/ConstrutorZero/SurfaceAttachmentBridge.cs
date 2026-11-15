@@ -23,7 +23,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
         private const BindingFlags All = BindingFlags.Public | BindingFlags.NonPublic |
             BindingFlags.Static | BindingFlags.Instance;
         private enum Anchor { None, Floor, Wall }
-        private static bool warned;
+        private static bool warned, reportedFloor, reportedWall, reportedMiss;
         private static float rememberedYawX, rememberedYawZ = 1f;
         private static object lastPrefab, lastPosition, lastRotation;
         private static DateTime lastValidUtc;
@@ -35,6 +35,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
             rememberedYawX = 0f;
             rememberedYawZ = 1f;
             warned = false;
+            reportedFloor = reportedWall = reportedMiss = false;
         }
 
         internal static void CheckAsSubModulePostfix(
@@ -61,6 +62,13 @@ namespace Sirro.BZ.MP.ConstrutorZero
 
                 if (!TrySurfaceRay(builder, surface, out var hit))
                 {
+                    if (!reportedMiss)
+                    {
+                        reportedMiss = true;
+                        Trace.Info("SURFACE_LOCK_NO_RAY_HIT: " + surface +
+                            ", furniture=" + Read(builder, "constructableTechType") +
+                            ". Invalid placement remains blocked.");
+                    }
                     KeepLastSurfaceGhost(builder, prefab);
                     __result = false;
                     return;
@@ -110,6 +118,16 @@ namespace Sirro.BZ.MP.ConstrutorZero
                     if (__args != null && __args.Length > 0)
                         __args[0] = collider;
                     Remember(builder, prefab);
+                    if (surface == Anchor.Floor ? !reportedFloor : !reportedWall)
+                    {
+                        if (surface == Anchor.Floor) reportedFloor = true;
+                        else reportedWall = true;
+                        Trace.Info("SURFACE_LOCK_FIRST_CONTACT: " + surface +
+                            ", furniture=" + Read(builder, "constructableTechType") +
+                            ", hitHeight=" + Float(Read(hit, "point"), "y") +
+                            ", pivotHeight=" + Float(args[1], "y") +
+                            ". Subsequent placements are silent.");
+                    }
                 }
             }
             catch (Exception e)
