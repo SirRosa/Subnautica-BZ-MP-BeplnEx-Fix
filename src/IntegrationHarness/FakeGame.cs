@@ -168,6 +168,7 @@ public static class Targeting
 public static class Builder
 {
     public static bool isPlacing => ghostModel != null;
+    public static TechType constructableTechType = TechType.None;
     public static UnityEngine.GameObject prefab { get; set; }
     public static UnityEngine.GameObject ghostModel { get; set; }
     public static bool rotationEnabled = true;
