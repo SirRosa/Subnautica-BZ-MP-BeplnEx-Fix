@@ -32,6 +32,12 @@ namespace Sirro.BZ.MP.ConstrutorZero
         private static float? originalDefaultRange, originalMaxRange;
         private static readonly Dictionary<object, Tuple<float, float>> ConstructableRanges =
             new Dictionary<object, Tuple<float, float>>();
+        private static bool[] originalPlacementFlags;
+        private static IList expandedSurfaceList;
+        private static object addedSurfaceType;
+        private static readonly string[] PlacementFlagNames = {
+            "allowedOnConstructables", "allowedInBase", "allowedInSub", "allowedOutside"
+        };
         private static float activeRange = 2f;
         private static object frozenPlacePosition;
         private static Type inputType, keyCodeType, unityTimeType;
@@ -144,6 +150,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
             {
                 SetQuickSlotHotkeysIgnored(false);
                 RestoreRanges();
+                RestorePlacementFlags();
                 if (unpatch == null) Trace.Info("BUILDING_UNPATCH_WARNING: no Harmony unpatch API");
                 else if (unpatch.Name == "UnpatchAll")
                     unpatch.Invoke(harmony, new object[] { "sirro.bz.mp.construtor-zero.building" });
@@ -228,6 +235,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
             frozen = false; freezeInitialized = false;
             attachToTarget = false; fullOverride = false;
             RestoreRanges();
+            RestorePlacementFlags();
         }
 
         private static void CreateGhostPostfix()
@@ -346,6 +354,25 @@ namespace Sirro.BZ.MP.ConstrutorZero
             SetValue(builder, "placePosition", frozenPlacePosition);
         }
 
+        private static void RestorePlacementFlags()
+        {
+            if (originalPlacementFlags != null)
+            {
+                var builder = Reflect.Type("Builder");
+                if (builder != null)
+                    for (int i = 0; i < PlacementFlagNames.Length; i++)
+                        SetValue(builder, PlacementFlagNames[i], originalPlacementFlags[i]);
+                originalPlacementFlags = null;
+            }
+            if (expandedSurfaceList != null && addedSurfaceType != null)
+            {
+                try { expandedSurfaceList.Remove(addedSurfaceType); }
+                catch (Exception e) { LogOnce("RESTORE_SURFACES", e); }
+            }
+            expandedSurfaceList = null;
+            addedSurfaceType = null;
+        }
+
         private static void UpdateAllowedPrefix()
         {
             if (!Cfg.ExpandedSurfaces) return;
@@ -356,6 +383,17 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 // Only furniture ghost: restrictions for base pieces are controlled by MP.
                 var prefab = Value(builder, "prefab");
                 if (HasComponent(prefab, "ConstructableBase")) return;
+                if (originalPlacementFlags == null)
+                {
+                    var values = new bool[PlacementFlagNames.Length];
+                    for (int i = 0; i < values.Length; i++)
+                    {
+                        var original = Value(builder, PlacementFlagNames[i]);
+                        if (!(original is bool)) return; // incompatible ABI, do not mutate.
+                        values[i] = (bool)original;
+                    }
+                    originalPlacementFlags = values;
+                }
                 SetValue(builder, "allowedOnConstructables", true);
                 SetValue(builder, "allowedInBase", true);
                 SetValue(builder, "allowedInSub", true);
@@ -366,7 +404,12 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 {
                     var wall = Enum.Parse(surfaceType, "Wall");
                     var ceiling = Enum.Parse(surfaceType, "Ceiling");
-                    if (surfaces.Contains(wall) && !surfaces.Contains(ceiling)) surfaces.Add(ceiling);
+                    if (surfaces.Contains(wall) && !surfaces.Contains(ceiling))
+                    {
+                        surfaces.Add(ceiling);
+                        expandedSurfaceList = surfaces;
+                        addedSurfaceType = ceiling;
+                    }
                 }
             }
             catch (Exception e) { LogOnce("UPDATE_ALLOWED_SURFACE", e); }
