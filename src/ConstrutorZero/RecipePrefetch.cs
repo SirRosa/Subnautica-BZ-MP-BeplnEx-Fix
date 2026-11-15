@@ -105,6 +105,39 @@ namespace Sirro.BZ.MP.ConstrutorZero
             }
         }
 
+        internal static bool InventoryHasCompleteRecipe(object recipeType)
+        {
+            if (recipeType == null) return false;
+            try
+            {
+                var techData = Reflect.Type("TechData");
+                var method = techData?.GetMethods(All).FirstOrDefault(m =>
+                    m.Name == "GetIngredients" && m.GetParameters().Length == 1 &&
+                    m.GetParameters()[0].ParameterType.IsInstanceOfType(recipeType));
+                var ingredients = method?.Invoke(null, new[] { recipeType }) as IEnumerable;
+                if (ingredients == null) return false;
+                var inv = CraftFromContainersBridge.Read(Reflect.Type("Inventory"), "main");
+                if (inv == null) return false;
+                var count = inv.GetType().GetMethods(All).FirstOrDefault(m =>
+                    m.Name == "GetPickupCount" && m.GetParameters().Length == 1 &&
+                    m.GetParameters()[0].ParameterType == recipeType.GetType());
+                if (count == null) return false;
+                foreach (var ingredient in ingredients)
+                {
+                    var type = CraftFromContainersBridge.Read(ingredient, "techType");
+                    var amount = CraftFromContainersBridge.Read(ingredient, "amount");
+                    if (type == null || amount == null) return false;
+                    int required = Math.Max(0, Convert.ToInt32(amount,
+                        CultureInfo.InvariantCulture));
+                    int available = Convert.ToInt32(count.Invoke(inv, new[] { type }),
+                        CultureInfo.InvariantCulture);
+                    if (available < required) return false;
+                }
+                return true;
+            }
+            catch { return false; }
+        }
+
         internal static bool BeginCurrentContext(Action<string> report)
         {
             // Building always takes precedence over pinned recipe notifications.
@@ -173,6 +206,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
                 var name = activeRecipeName;
                 int delivered = completed;
                 Reset();
+                AutoCraftCoordinator.IngredientsDelivered();
                 report?.Invoke("Server delivered " + delivered +
                     " ingredient(s) for " + name + ". You can now craft normally.");
             }
