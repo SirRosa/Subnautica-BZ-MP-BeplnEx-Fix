@@ -330,6 +330,12 @@ public static class Program
             FakeMultiplayerConstruction.PacketsSent == 0,
             "Partial server delivery cannot send construction packet");
         Inventory.main.OnAddItem(buildSecond);
+        // Race: the second click happens AFTER the last item entered inventory
+        // but BEFORE the coordinator's next scheduled replay frame.
+        Assert(!Builder.TryPlace(),
+            "Second building click stays deferred after ingredients arrive but before replay");
+        Assert(FakeMultiplayerConstruction.PacketsSent == 0,
+            "No premature multiplayer construction packet in final-ACK race window");
         Time.frameCount++;
         Player.main.Update();
         Assert(FakeMultiplayerConstruction.PacketsSent == 1 &&
