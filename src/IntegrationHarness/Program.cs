@@ -322,6 +322,16 @@ public static class Program
         Assert(!(bool)isWaiting.GetValue(null),
             "Menu close cancels staged craft and ingredient queue");
 
+        var selectedMenu = new uGUI_CraftingMenu();
+        selectedMenu.Action(craftNode);
+        Assert((bool)isWaiting.GetValue(null),
+            "Craft prefetch staged before the UI loses selection");
+        int beforeDeselect = Subnautica.Events.Handlers.Storage.NetworkRequests;
+        selectedMenu.OnDeselect();
+        Assert(!(bool)isWaiting.GetValue(null) && !(bool)active.GetValue(null) &&
+            Subnautica.Events.Handlers.Storage.NetworkRequests == beforeDeselect,
+            "Fabricator OnDeselect cancels queued transfers without further packets");
+
         // Loss of blueprint unlock or no-cost mode must cancel BEFORE another
         // pending locker item is requested, not merely before UI replay.
         var resyncMenu = new uGUI_CraftingMenu();
