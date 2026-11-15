@@ -1,6 +1,6 @@
 # Construtor Zero — development branch for Below Zero MP 3.0.1
 
-**DO NOT INSTALL: NOT READY FOR GAMEPLAY TESTS.** This branch integrates
+**v0.2.1-test: first controlled candidate for a disposable two-client save only. Not for normal play.** See [FIRST-TEST-301.md](FIRST-TEST-301.md) for enabled features, limitations and the stop/go checklist. This branch integrates
 SnapBuilder and Building Tweaks porting work with the safe starting point for
 Craft From Containers. Full multiplayer feature parity is **not implemented**.
 
@@ -25,7 +25,7 @@ Code: [Construtor Zero source](src/ConstrutorZero)
   | [ABI audit](ABI-AUDIT-301.md)
   | [feature parity status](CONSTRUTOR-ZERO-PARITY.md).
 
-Last verified suite: 122 simulated ABI/Harmony/network-contract checks
+Last verified suite before candidate packaging: 136 simulated ABI/Harmony/network-contract checks
 (plus warning-free compilation); NOT a multiplayer gameplay certification.
 
 ---
