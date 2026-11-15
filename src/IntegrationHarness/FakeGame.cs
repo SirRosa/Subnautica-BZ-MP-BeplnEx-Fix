@@ -75,6 +75,27 @@ public static class TechData
             recipe == TechType.TestRecipe ? new List<Ingredient> {
                 new Ingredient(TechType.Titanium, 2) } : new List<Ingredient>());
 }
+public enum TreeAction { None, Expand, Craft }
+public class uGUI_CraftingMenu
+{
+    public class Node
+    {
+        public TreeAction action;
+        public TechType techType;
+    }
+    public int CraftActionCalls;
+    public int ExpandActions;
+    public bool Closed;
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public void Action(Node node)
+    {
+        if (node.action == TreeAction.Craft) CraftActionCalls++;
+        if (node.action == TreeAction.Expand) ExpandActions++;
+    }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public void Close() { Closed = true; }
+}
 public class uGUI_RecipeEntry
 {
     public TechType techType { get; set; }
@@ -103,12 +124,20 @@ public class StorageContainer
 public class Inventory
 {
     public static Inventory main = new Inventory();
+    public readonly Dictionary<TechType, int> ActualItems = new Dictionary<TechType, int>();
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public int GetPickupCount(TechType type) => 0;
+    public int GetPickupCount(TechType type) =>
+        ActualItems.TryGetValue(type, out var count) ? count : 0;
     [MethodImpl(MethodImplOptions.NoInlining)]
     public bool DestroyItem(TechType destroyTechType, bool skipEquipment = false) => false;
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public void OnAddItem(InventoryItem item) { }
+    public void OnAddItem(InventoryItem item)
+    {
+        // Simulates the actual client inventory state BEFORE Harmony postfix
+        // confirms a server-delivered item.
+        var type = item.item.GetTechType();
+        ActualItems[type] = GetPickupCount(type) + 1;
+    }
 }
 public class Player
 {
