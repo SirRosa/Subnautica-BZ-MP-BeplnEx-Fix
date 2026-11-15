@@ -1,7 +1,7 @@
 name: Construtor Zero experimental
 on:
   push:
-    branches: [test/construtor-zero-301]
+    branches: [test/construtor-zero-301, test/construtor-zero-cfc-301]
   workflow_dispatch:
 
 jobs:
