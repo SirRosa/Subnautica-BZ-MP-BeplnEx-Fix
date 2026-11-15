@@ -524,6 +524,9 @@ namespace Sirro.BZ.MP.ConstrutorZero
             }
         }
 
+        internal static bool IsFineRotationHeld() =>
+            Key("LeftAlt", false) || Key("RightAlt", false);
+
         private static bool Key(string key, bool down)
         {
             if (input == null)
