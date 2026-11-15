@@ -780,6 +780,11 @@ public static class Program
         Input.Clear();
         Assert(!Builder.ValidateOutdoor(new GameObject()),
             "Pressing G again restores normal collision rules");
+        Builder.UpdateAllowed();
+        Assert(!Builder.allowedInBase && !Builder.allowedOutside &&
+            !Builder.allowedOnConstructables &&
+            !Builder.allowedSurfaceTypes.Contains(SurfaceType.Ceiling),
+            "Without G, ordinary furniture retains vanilla ground-only placement surface rules");
         unsafeField.SetValue(null, false);
         var o = new List<GameObject> { new GameObject() };
         Builder.GetObstacles(new Vector3(0,0,0), Quaternion.Euler(new Vector3(0,0,0)),
