@@ -7,10 +7,25 @@ Craft From Containers. Full multiplayer feature parity is **not implemented**.
 Read the exhaustive [feature parity and network limitations](CONSTRUTOR-ZERO-PARITY.md)
 before assuming a CI success is game compatibility.
 
-The experimental Craft From Containers module never turns an unconfirmed
-storage transfer into a successful recipe consumption. This prevents free
-crafting/duplication but means automatic crafting from shared lockers is
-**not yet available**.
+The experimental Craft From Containers module NEVER turns an unconfirmed
+storage transfer into a successful recipe consumption. This protects against
+free crafting/duplication. **Newly implemented but disabled by default:**
+server-acknowledged sequential prefetch, deferred fabricator Craft action,
+and deferred furniture construction via normal multiplayer Builder.TryPlace.
+These features passed only a simulated Unity/Harmony/MP integration harness;
+they have NOT been verified on a real 3.0.1 server or two game clients.
+
+Tests now simulate BOT Benson's construction Harmony prefixes, proving
+no construction packet is sent while resources are outstanding. The original
+SnapBuilder and Building Tweaks are still only partially ported; arbitrary
+moving-parent attachment is not supported without a new server protocol.
+
+Code: [Construtor Zero source](src/ConstrutorZero)
+  | [ABI audit](ABI-AUDIT-301.md)
+  | [feature parity status](CONSTRUTOR-ZERO-PARITY.md).
+
+Last confirmed suite at this stage: 99 simulated/contract checks
+(plus warning-free compilation); NOT a multiplayer gameplay certification.
 
 ---
 
