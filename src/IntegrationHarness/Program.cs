@@ -265,6 +265,16 @@ public static class Program
         Inventory.main.ActualItems.Clear();
         gui.Action(craftNode);
         Assert((bool)isWaiting.GetValue(null), "Second deferred craft is pending");
+        int priorExpansions = gui.ExpandActions;
+        gui.Action(new uGUI_CraftingMenu.Node {
+            action = TreeAction.Expand, techType = TechType.TestRecipe });
+        Assert(gui.ExpandActions == priorExpansions + 1,
+            "Category navigation remains functional during pending craft");
+        Assert(!(bool)isWaiting.GetValue(null),
+            "Navigating away cancels delayed craft before it can replay");
+        gui.Action(craftNode);
+        Assert((bool)isWaiting.GetValue(null),
+            "A new deliberate craft click can stage a separate request");
         gui.Close();
         Assert(!(bool)isWaiting.GetValue(null),
             "Menu close cancels staged craft and ingredient queue");
