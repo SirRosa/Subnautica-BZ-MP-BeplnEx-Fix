@@ -764,7 +764,11 @@ namespace Sirro.BZ.MP.ConstrutorZero
 
         private static void Info(string message)
         {
+            // Normal transfers should NEVER flood the HUD with mod logs.
+            // Player-facing messages are opt-in; diagnostic messages remain
+            // available in the plugin/client log when investigating failures.
             Trace.Info("CFC: " + message);
+            if (!ContainerConfig.ShowMessages) return;
             try
             {
                 var error = Reflect.Type("ErrorMessage");
@@ -788,6 +792,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
         internal static bool AutoCraftEnabled = false;
         internal static bool AutoBuildEnabled = false;
         internal static bool AutoPlaceAfterPrefetch = false;
+        internal static bool ShowMessages = false;
         internal static string TransferKey = "F6";
         internal static readonly Dictionary<string, bool> Allowed = new Dictionary<string, bool>(
             StringComparer.OrdinalIgnoreCase);
@@ -822,6 +827,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
                         "# Ghost pose must remain unchanged; base module prefetch is not supported.",
                         "auto_build_enabled=false",
                         "auto_place_after_prefetch=false",
+                        "# Screen messages are verbose and can cause HUD stutter.",
+                        "show_cfc_messages=false",
                         "transfer_key=F6",
                         "Locker=true",
                         "SmallLocker=true"
@@ -842,6 +849,8 @@ namespace Sirro.BZ.MP.ConstrutorZero
                         AutoBuildEnabled = value.Equals("true", StringComparison.OrdinalIgnoreCase);
                     else if (name.Equals("auto_place_after_prefetch", StringComparison.OrdinalIgnoreCase))
                         AutoPlaceAfterPrefetch = value.Equals("true", StringComparison.OrdinalIgnoreCase);
+                    else if (name.Equals("show_cfc_messages", StringComparison.OrdinalIgnoreCase))
+                        ShowMessages = value.Equals("true", StringComparison.OrdinalIgnoreCase);
                     else if (name.Equals("range_meters", StringComparison.OrdinalIgnoreCase) &&
                         float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var range))
                         RangeMeters = Math.Max(1f, Math.Min(300f, range));
