@@ -50,16 +50,28 @@ jobs:
           Construtor Zero development build -- NOT READY FOR PLAY
           Multiplayer BOT Benson 3.0.1 -- client plugin
 
-          1. BACK UP YOUR SAVE.
-          2. Remove Sirro.BZ.MP.NativeSnapBuilder.dll and Subnautica.BZ.MP.PortProbe.dll from Game/Plugins.
-          3. Copy ONLY Sirro.BZ.MP.ConstrutorZero.dll to %APPDATA%/.botbenson/Subnautica Below Zero/Game/Plugins/
-          4. Launch multiplayer, check Game/Logs for [ConstrutorZero].
-          5. Test with two players on a disposable save. Verify placement, rejoin, host restart.
+          DO NOT INSTALL THIS DEVELOPMENT ARTIFACT IN A PRODUCTION SESSION.
+          Game runtime behavior and multiplayer save/rejoin are NOT CI-tested.
 
-          LIMITATIONS: experimental CraftFromContainers groundwork only. NOT a full parity port of
-          SnapBuilder and Building Tweaks. Dynamic parent attachment and
-          unsafe override/deconstruction remain gated to prevent desync.
-          CraftFromContainers cannot automatically craft/build from lockers yet; server transfer is async.\n          DO NOT install or use on a production save. Game runtime behavior not CI-tested.
+          IMPLEMENTED IN CODE (all OFF by default):
+          - auto_craft_enabled: defer Craft until missing ingredients arrive through
+            the server, then replay vanilla uGUI_CraftingMenu.Action once.
+          - auto_build_enabled: stage ingredients for furniture construction.
+          - auto_place_after_prefetch: only replay Builder.TryPlace with identical
+            original ghost pose, after receipt of every ingredient.
+          - manual_prefetch_enabled: F6 pulls missing recipe ingredients one by one.
+          - Server transfer acceptance and inventory item ACKs verified in a simulator.
+
+          REMAINING LIMITATIONS:
+          - Only normal lockers are supported for CFC transfer.
+          - Server API offers no atomic multi-container transaction or rollback.
+          - Original SnapBuilder and Building Tweaks feature parity is incomplete.
+          - Arbitrary Attach to Target requires a network protocol extension.
+          - Unsafe Full Override and custom parent transforms are blocked.
+          - Real BOT Benson 3.0.1 multiplayer has not run these code paths.
+
+          Review CONSTRUTOR-ZERO-PARITY.md and ABI-AUDIT-301.md in the repository
+          before treating this as a candidate release.
           "@ | Set-Content "dist/README-EXPERIMENTAL.txt"
           Compress-Archive -Path "dist/Sirro.BZ.MP.ConstrutorZero.dll", "dist/README-EXPERIMENTAL.txt" -DestinationPath "dist/Construtor-Zero-development-CFC.zip" -Force
       - uses: actions/upload-artifact@v4
