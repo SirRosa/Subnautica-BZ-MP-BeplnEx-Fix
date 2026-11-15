@@ -48,7 +48,7 @@ namespace Sirro.BZ.MP.ConstrutorZero
         {
             if (IsActive || recipeType == null) return false;
             if (!CraftFromContainersBridge.NetworkActive || !ContainerConfig.Enabled ||
-                !ContainerConfig.ManualPrefetchEnabled)
+                !(ContainerConfig.ManualPrefetchEnabled || ContainerConfig.AutoCraftEnabled))
                 return false;
             try
             {
