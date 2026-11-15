@@ -488,7 +488,23 @@ public static class Program
         Eq(pos.z,2.5f,"Native snap z");
         Eq(rot.eulerAngles.y,45f,"Rotation grid 45 degrees");
 
-        // Regression: Builder.prefab is a property in the test ABI and may be
+        var wallHit = new RaycastHit { normal = new Vector3(1,0,0), transform = null };
+        var wallPosition = new Vector3(0f,1.37f,2.74f);
+        var wallRotation = Quaternion.Euler(new Vector3(0,43f,0));
+        Builder.SetPlaceOnSurface(wallHit, ref wallPosition, ref wallRotation);
+        Eq(wallRotation.eulerAngles.y,43f,
+            "Wall ghost is not incorrectly rotated by floor snap");
+        var ceilingHit = new RaycastHit {
+            normal = new Vector3(0,-1f,0), transform = null
+        };
+        var ceilingPosition = new Vector3(1.37f,0f,2.74f);
+        var ceilingRotation = Quaternion.Euler(new Vector3(0,43f,0));
+        Builder.SetPlaceOnSurface(ceilingHit,
+            ref ceilingPosition, ref ceilingRotation);
+        Eq(ceilingRotation.eulerAngles.y,43f,
+            "Ceiling ghost is not incorrectly rotated by floor snap");
+
+        // Regression: Builder.prefab is a field in the real game; it may be
         // a property in the real BZ game; base modules must never be snapped.
         var basePrefab = new GameObject();
         basePrefab.AddComponent(new ConstructableBase());
