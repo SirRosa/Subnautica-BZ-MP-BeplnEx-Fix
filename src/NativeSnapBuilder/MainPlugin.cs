@@ -134,6 +134,8 @@ namespace Sirro.BZ.MP.NativeSnapBuilder
     public static class SnapHook
     {
         private static bool alreadyWarned;
+        private static bool firstInvocationLogged;
+        private static bool firstSnapLogged;
         private static Type input, keyCode;
         private static MethodInfo getKeyDown, getKey;
         private static int lastToggleFrame = -1;
@@ -145,6 +147,11 @@ namespace Sirro.BZ.MP.NativeSnapBuilder
                 return;
             try
             {
+                if (!firstInvocationLogged)
+                {
+                    firstInvocationLogged = true;
+                    Trace.Info("POSTFIX_CALLED: Builder.SetPlaceOnSurface");
+                }
                 if (Key("Mouse2", true))
                 {
                     // A builder may call placement several times in the same Unity frame.
@@ -163,6 +170,7 @@ namespace Sirro.BZ.MP.NativeSnapBuilder
                 if (!Options.Enabled || IsWholeBasePiece()) return;
                 var hit = __args[0];
                 var position = __args[1];
+                var before = position;
                 var vectorType = position.GetType();
                 var target = hit.GetType().GetProperty("transform")?.GetValue(hit, null);
                 var normal = hit.GetType().GetProperty("normal")?.GetValue(hit, null);
@@ -182,6 +190,17 @@ namespace Sirro.BZ.MP.NativeSnapBuilder
                 if (target != null)
                     position = Reflect.Transform(target, "TransformPoint", vectorType, position);
                 __args[1] = position;
+                if (!firstSnapLogged)
+                {
+                    var deltaX = Math.Abs(Reflect.Component(before, "x") - Reflect.Component(position, "x"));
+                    var deltaY = Math.Abs(Reflect.Component(before, "y") - Reflect.Component(position, "y"));
+                    var deltaZ = Math.Abs(Reflect.Component(before, "z") - Reflect.Component(position, "z"));
+                    if (deltaX + deltaY + deltaZ > .001f)
+                    {
+                        firstSnapLogged = true;
+                        Trace.Info("POSITION_CHANGED: snapping applied to placement");
+                    }
+                }
             }
             catch (Exception ex)
             {
