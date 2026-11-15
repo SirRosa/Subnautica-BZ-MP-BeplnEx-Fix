@@ -98,6 +98,9 @@ public static class Program
         Assert((int)stockCounter.Invoke(null,
             new object[] { TechType.Titanium }) >= 2,
             "Scene locker with nested storage owner and GetItems API supplies stock");
+        Assert(sceneLocker.container.GetItemsCalls > 0 &&
+            locker.container.GetItemsCalls > 0,
+            "CFC explicitly uses actual type-filtered GetItems API on both lockers");
         sceneLocker.container.Clear();
 
         var requestOne = cfcType.GetMethod("TryRequestOne",
