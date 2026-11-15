@@ -61,6 +61,19 @@ public static class Program
         Assert((int)storages.GetValue(null) == 1, "Storage registered on Awake");
         var requestOne = cfcType.GetMethod("TryRequestOne",
             BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+        locker.storageRoot.position = new Vector3(250, 0, 0);
+        Assert(!(bool)requestOne.Invoke(null, new object[] { TechType.Titanium }),
+            "Out-of-range locker cannot be used for crafting");
+        locker.storageRoot.position = new Vector3(2, 0, 0);
+        var confType = plugin.GetType().Assembly.GetType(
+            "Sirro.BZ.MP.ConstrutorZero.ContainerConfig", true);
+        var allowedField = confType.GetField("Allowed", BindingFlags.Static |
+            BindingFlags.Public | BindingFlags.NonPublic);
+        var allowed = (IDictionary<string, bool>)allowedField.GetValue(null);
+        allowed["Locker"] = false;
+        Assert(!(bool)requestOne.Invoke(null, new object[] { TechType.Titanium }),
+            "Disabled locker type is excluded");
+        allowed["Locker"] = true;
         Assert((bool)requestOne.Invoke(null, new object[] { TechType.Titanium }),
             "Server transfer requested using storage event");
         Assert(Subnautica.Events.Handlers.Storage.NetworkRequests == 1 &&
