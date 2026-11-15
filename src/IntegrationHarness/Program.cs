@@ -151,7 +151,10 @@ public static class Program
         var ghostPosition = new Vector3(-99, -99, -99);
         var ghostRotation = Quaternion.Euler(new Vector3(0, 30, 0));
         Builder.SetDefaultPlaceTransform(ref ghostPosition, ref ghostRotation);
-        Eq(ghostPosition.x, 1f, "Real ref Vector3 placement is frozen");
+        Eq(ghostPosition.x, 0f,
+            "Ref-argument placement remains vanilla to avoid Harmony argument corruption");
+        Eq(Builder.placePosition.x, 1f,
+            "Manual ghost position is managed by Builder.Update instead");
         Input.Held.Add(KeyCode.Keypad4);
         Time.frameCount++;
         Builder.Update();
