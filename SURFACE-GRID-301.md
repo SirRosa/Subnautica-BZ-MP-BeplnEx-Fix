@@ -6,7 +6,7 @@ CI does not certify correct Subnautica Below Zero BOT Benson 3.0.1 behavior.
 ## Fixed after testing 0.3.4-rc5
 
 **1. Floor Locker detaches when looking downward.**
-The previous `SurfaceAttachmentBridge.CheckAsSubModulePostfix` returned immediately when vanilla `CheckAsSubModule` returned `true`. In practice a downward-looking camera can make vanilla accept a camera-ray pose, bypassing the separate downward floor probe. The new code runs the independent floor ray and full hit/collision validation **regardless of vanilla success**. The original game's accepted pose is no longer implicitly trusted for floor-only prefab placement. A false/missing floor hit leaves the last grounded ghost as nonplaceable, never authorizes floating furniture.
+The previous `SurfaceAttachmentBridge.CheckAsSubModulePostfix` returned immediately when vanilla `CheckAsSubModule` returned `true`. In practice a downward-looking camera can make vanilla accept a camera-ray pose, bypassing the separate downward floor probe. The new code runs the independent floor ray and full hit/collision validation **regardless of vanilla success**. The downward probe also uses `Physics.RaycastAll` to find the real structural floor **behind other lockers' horizontal tops**; a floor Locker must not anchor to another piece of furniture. The original game's accepted pose is no longer implicitly trusted for floor-only prefab placement. A false/missing floor hit leaves the last grounded ghost as nonplaceable, never authorizes floating furniture.
 
 **2. Wall furniture attaches to unrelated lockers instead of structural walls.**
 The old horizontal ray queried only a single hit from `Physics.Raycast`, usually the nearest `Constructable` in front of the wall. The new wall probe uses Unity's `Physics.RaycastAll`, sorts candidates in two tiers (**non-furniture structural surfaces first**, ordinary Constructable furniture second), and validates surface direction, target object, distance, tags and collision. Object-to-object wall attachment remains as a secondary option **only when Builder.allowedOnConstructables permits it**. Structural/base objects are excluded from furniture classification using `ConstructableBase` and `BaseDeconstructable`. No world teleport and no override for base construction.
@@ -18,6 +18,7 @@ The previous `SnapHook.Postfix` snapped coordinates in `hit.transform` local spa
 - Vanilla `CheckAsSubModule` can return true with stale elevated pose when looking down; the corrected floor ray still returns the same ground elevation.
 - Pitch sweep from looking up to almost straight down, verifying floor-pivot Y plus snapped X/Z remain stable across vanilla camera-ray success thresholds.
 - A nearby Locker hides the real wall; the wall-mounted SmallLocker still targets the farther structural wall.
+- A horizontal locker TOP hides the real floor; floor-only Locker selects the structural floor behind it, or refuses placement if no real floor exists.
 - Secondary furniture-to-furniture attachment can still work if native flags allow it; otherwise it is rejected.
 - Three forward/back camera translations and three different wall child collider transforms do not shift the wall grid.
 - Oblique wall grid preserves normal depth and snaps the tangent distance consistently.
