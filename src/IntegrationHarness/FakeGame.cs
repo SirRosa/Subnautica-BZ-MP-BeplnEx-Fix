@@ -68,6 +68,12 @@ public class Ingredient
     public int amount { get; }
     public Ingredient(TechType techType, int amount) { this.techType = techType; this.amount = amount; }
 }
+public static class CrafterLogic
+{
+    public static bool IsUnlocked = true;
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static bool IsCraftRecipeUnlocked(TechType techType) => IsUnlocked;
+}
 public static class TechData
 {
     public static System.Collections.ObjectModel.ReadOnlyCollection<Ingredient> GetIngredients(TechType recipe) =>
